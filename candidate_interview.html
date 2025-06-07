@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .interview-container { max-width: 900px; margin: auto; }
+        .video-container { background-color: #333; display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; }
+        .ai-avatar { width: 100px; height: 100px; border-radius: 50%; background-color: #e0e0e0; margin-bottom: 1rem; object-fit: cover; border: 3px solid #e0e0e0; transition: border-color 0.3s ease; }
+        .ai-avatar.speaking { border-color: #4F46E5; }
+        .transcript-area { height: 250px; background-color: #f9f9f9; border: 1px solid #eee; padding: 10px; overflow-y: auto; font-size: 0.9rem; }
+        .transcript-entry { margin-bottom: 8px; }
+        .transcript-actor-ai { color: #4F46E5; font-weight: bold; }
+        .transcript-actor-candidate { color: #10B981; font-weight: bold; }
+        .hidden-section { display: none !important; }
+
+        .status-indicator { transition: all 0.3s ease; }
+        .mic-listening { color: #ef4444; }
+
+        /* Thinking Indicator Animation */
+        .lds-ellipsis { display: inline-block; position: relative; width: 50px; height: 12px; }
+        .lds-ellipsis div { position: absolute; top: 0px; width: 9px; height: 9px; border-radius: 50%; background: #4F46E5; animation-timing-function: cubic-bezier(0, 1, 1, 0); }
+        .lds-ellipsis div:nth-child(1) { left: 4px; animation: lds-ellipsis1 0.6s infinite; }
+        .lds-ellipsis div:nth-child(2) { left: 4px; animation: lds-ellipsis2 0.6s infinite; }
+        .lds-ellipsis div:nth-child(3) { left: 20px; animation: lds-ellipsis2 0.6s infinite; }
+        .lds-ellipsis div:nth-child(4) { left: 36px; animation: lds-ellipsis3 0.6s infinite; }
+        @keyframes lds-ellipsis1 { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+        @keyframes lds-ellipsis3 { 0% { transform: scale(1); } 100% { transform: scale(0); } }
+        @keyframes lds-ellipsis2 { 0% { transform: translate(0, 0); } 100% { transform: translate(16px, 0); } }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="main-container" class="interview-container bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full">
+
+        <!-- Loading State -->
+        <div id="loading-view" class="text-center py-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p class="text-lg text-gray-600 mt-4">Loading Interview Details...</p>
+        </div>
+
+        <!-- Error View -->
+        <div id="error-view" class="hidden-section text-center py-10">
+            <i class="fas fa-exclamation-triangle text-red-500 fa-3x mb-4"></i>
+            <h2 class="text-2xl font-semibold text-red-700 mb-2">Error</h2>
+            <p id="error-message" class="text-gray-600"></p>
+            <button onclick="window.location.reload()" class="mt-6 bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors">Try Again</button>
+        </div>
+
+        <!-- Welcome & Details Submission View -->
+        <div id="welcome-view" class="hidden-section">
+            <div class="text-center mb-6">
+                <img src="https://placehold.co/100x100/EFEFEF/333333?text=Logo" alt="Company Logo" class="w-24 h-24 mx-auto mb-4 rounded-full object-contain bg-gray-200 border" id="company-logo-placeholder">
+                <h1 class="text-3xl font-bold text-gray-800">Welcome to Your AI Interview</h1>
+                <p class="text-gray-600 mt-1">For the position of: <span id="job-title" class="font-semibold"></span></p>
+                <p class="text-gray-600">With: <span id="company-name" class="font-semibold"></span></p>
+            </div>
+
+            <form id="candidate-details-form" class="space-y-4">
+                <div>
+                    <label for="candidateName" class="block text-sm font-medium text-gray-700">Full Name</label>
+                    <input type="text" id="candidateName" name="candidateName" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="candidateEmail" class="block text-sm font-medium text-gray-700">Email Address</label>
+                    <input type="email" id="candidateEmail" name="candidateEmail" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+                <div>
+                    <label for="resumeFile" class="block text-sm font-medium text-gray-700">Upload Resume (PDF, DOC, DOCX, TXT)</label>
+                    <input type="file" id="resumeFile" name="resumeFile" required accept=".pdf,.doc,.docx,.txt" class="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+                </div>
+                <div id="submit-details-error" class="text-red-500 text-sm hidden-section"></div>
+                <button type="submit" id="submit-details-button" class="w-full bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors font-semibold flex items-center justify-center">
+                    Begin Interview <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Interview In Progress View -->
+        <div id="interview-view" class="hidden-section">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Left Panel: Video & AI Avatar -->
+                <div class="md:col-span-1 space-y-6">
+                    <div class="text-center">
+                        <img id="ai-avatar-img" src="https://placehold.co/100x100/E0E7FF/4F46E5?text=AI" alt="AI Interviewer" class="ai-avatar mx-auto">
+                        <p id="ai-status" class="font-semibold text-gray-700 status-indicator">Initializing...</p>
+                    </div>
+                    <div class="video-container bg-black rounded-lg overflow-hidden">
+                        <video id="camera-feed" class="w-full h-full object-cover" autoplay muted playsinline></video>
+                    </div>
+                </div>
+
+                <!-- Right Panel: Transcript & Interaction -->
+                <div class="md:col-span-2 space-y-4 flex flex-col">
+                    <h2 class="text-xl font-semibold text-gray-700">Interview Transcript</h2>
+                    <div id="transcript-area" class="transcript-area rounded-md flex-grow"></div>
+                    <div id="interaction-status-area" class="p-4 bg-gray-50 rounded-lg min-h-[60px] flex items-center justify-center text-center">
+                        <div id="interaction-status-text" class="text-gray-600 font-medium">Please wait...</div>
+                        <div id="mic-icon-status" class="hidden-section text-gray-500"><i class="fas fa-microphone fa-lg"></i></div>
+                        <div id="ai-thinking-indicator" class="lds-ellipsis hidden-section"><div></div><div></div><div></div><div></div></div>
+                    </div>
+                    <button id="end-interview-button" class="w-full bg-red-500 text-white py-2.5 px-4 rounded-lg hover:bg-red-600 transition-colors font-semibold">
+                        End Interview
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interview Ended View -->
+        <div id="ended-view" class="hidden-section text-center py-10">
+            <i class="fas fa-check-circle text-green-500 fa-3x mb-4"></i>
+            <h2 class="text-2xl font-semibold text-gray-800 mb-2">Interview Concluded</h2>
+            <p class="text-gray-600">Thank you for completing the AI interview. We will be in touch regarding the next steps.</p>
+            <p class="text-sm text-gray-500 mt-4">You may now close this window.</p>
+        </div>
+    </div>
+
+<script>
+    const API_BASE_URL = 'http://localhost:5001/api/interview';
+    const FILE_SERVER_BASE_URL = 'http://localhost:5001';
+
+    // DOM Elements
+    const loadingView = document.getElementById('loading-view');
+    const errorView = document.getElementById('error-view');
+    const errorMessageEl = document.getElementById('error-message');
+    const welcomeView = document.getElementById('welcome-view');
+    const interviewView = document.getElementById('interview-view');
+    const endedView = document.getElementById('ended-view');
+    const jobTitleEl = document.getElementById('job-title');
+    const companyNameEl = document.getElementById('company-name');
+    const candidateDetailsForm = document.getElementById('candidate-details-form');
+    const submitDetailsErrorEl = document.getElementById('submit-details-error');
+    const companyLogoPlaceholder = document.getElementById('company-logo-placeholder');
+    const transcriptArea = document.getElementById('transcript-area');
+    const aiAvatarImg = document.getElementById('ai-avatar-img');
+    const aiStatusEl = document.getElementById('ai-status');
+    const interactionStatusText = document.getElementById('interaction-status-text');
+    const micIconStatus = document.getElementById('mic-icon-status');
+    const aiThinkingIndicator = document.getElementById('ai-thinking-indicator');
+    const endInterviewButton = document.getElementById('end-interview-button');
+    const cameraFeed = document.getElementById('camera-feed');
+
+
+    let currentInterviewId = null;
+    let audioContext;
+    let speechTimeout;
+    let isListening = false;
+    let cameraStream = null;
+
+    // --- Speech Recognition Setup (Web Speech API) ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        let finalTranscript = '';
+
+        recognition.onstart = () => {
+             isListening = true;
+             finalTranscript = ''; // Clear transcript for the new turn
+        };
+
+        recognition.onresult = (event) => {
+            clearTimeout(speechTimeout);
+            let interimTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript.trim() + ' ';
+                } else {
+                    interimTranscript += event.results[i][0].transcript;
+                }
+            }
+            interactionStatusText.textContent = finalTranscript + interimTranscript;
+            speechTimeout = setTimeout(() => {
+                recognition.stop();
+            }, 5000);
+        };
+
+        recognition.onend = () => {
+             isListening = false;
+             clearTimeout(speechTimeout);
+            if (finalTranscript.trim().length > 3) {
+                setInteractionStatus('processing');
+                appendToTranscript('candidate', finalTranscript.trim());
+                submitResponse(finalTranscript.trim());
+            } else if (!interviewView.classList.contains('hidden-section')) {
+                setInteractionStatus('listening');
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+             isListening = false;
+             if (event.error !== 'no-speech') {
+                setInteractionStatus('error', 'Sorry, I had trouble hearing you.');
+             }
+        };
+    } else {
+        displayError("This browser does not support the Speech Recognition API. Please use a modern browser like Google Chrome or Microsoft Edge.");
+    }
+
+    // --- State Management and UI Updates ---
+    function showView(viewElement) {
+        [loadingView, errorView, welcomeView, interviewView, endedView].forEach(el => el.classList.add('hidden-section'));
+        if (viewElement) viewElement.classList.remove('hidden-section');
+    }
+
+    function displayError(message) {
+        errorMessageEl.textContent = message;
+        showView(errorView);
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+        }
+    }
+
+    function appendToTranscript(actor, text) {
+        const entry = document.createElement('div');
+        entry.classList.add('transcript-entry');
+        const actorSpan = document.createElement('span');
+        actorSpan.classList.add(actor === 'ai' ? 'transcript-actor-ai' : 'transcript-actor-candidate');
+        actorSpan.textContent = actor === 'ai' ? 'AI: ' : 'You: ';
+        entry.appendChild(actorSpan);
+        entry.append(document.createTextNode(text));
+        transcriptArea.appendChild(entry);
+        transcriptArea.scrollTop = transcriptArea.scrollHeight;
+    }
+
+    function setInteractionStatus(status, text) {
+        aiThinkingIndicator.classList.add('hidden-section');
+        micIconStatus.classList.add('hidden-section');
+        interactionStatusText.classList.remove('hidden-section');
+
+        switch (status) {
+            case 'speaking':
+                aiStatusEl.textContent = 'Speaking...';
+                aiAvatarImg.classList.add('speaking');
+                interactionStatusText.textContent = text || 'AI is asking a question...';
+                if(isListening) recognition.stop();
+                break;
+            case 'listening':
+                aiStatusEl.textContent = 'Listening...';
+                aiAvatarImg.classList.remove('speaking');
+                micIconStatus.classList.remove('hidden-section');
+                micIconStatus.classList.add('mic-listening');
+                interactionStatusText.textContent = text || 'Your turn. Start speaking.';
+                if(!isListening && recognition) recognition.start();
+                break;
+            case 'processing':
+                aiStatusEl.textContent = 'Thinking...';
+                aiAvatarImg.classList.remove('speaking');
+                aiThinkingIndicator.classList.remove('hidden-section');
+                micIconStatus.classList.add('hidden-section');
+                interactionStatusText.textContent = text || 'Processing your response...';
+                if(isListening) recognition.stop();
+                break;
+            case 'error':
+                 aiStatusEl.textContent = 'Error';
+                 interactionStatusText.textContent = text || 'An error occurred.';
+                 if(isListening) recognition.stop();
+                 break;
+            default:
+                aiStatusEl.textContent = 'Waiting';
+                interactionStatusText.textContent = text || 'Please wait.';
+                if(isListening) recognition.stop();
+        }
+    }
+
+
+    // --- Camera and Audio Functions ---
+    async function setupCamera() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            displayError("Camera access is not supported by your browser.");
+            return false;
+        }
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+            cameraFeed.srcObject = cameraStream;
+            return true;
+        } catch (err) {
+            console.error("Camera access error:", err);
+            displayError("Camera access is required for this interview. Please allow camera access in your browser settings and refresh the page.");
+            return false;
+        }
+    }
+
+    function playQuestionAudio(text) {
+        return new Promise(async (resolve) => {
+            setInteractionStatus('speaking');
+            try {
+                const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                if (!response.ok) throw new Error('Failed to fetch audio.');
+                const audioData = await response.arrayBuffer();
+                if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                const audioBuffer = await audioContext.decodeAudioData(audioData);
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start(0);
+                source.onended = resolve;
+            } catch (error) {
+                console.error("Error playing audio:", error);
+                setTimeout(resolve, 3000);
+            }
+        });
+    }
+
+    // --- API Call Functions ---
+    async function initiateInterview(invitationLink) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/initiate/${invitationLink}`);
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                throw new Error(err.message || 'Failed to load interview.');
+            }
+            const data = await response.json();
+            currentInterviewId = data.interview_id;
+            jobTitleEl.textContent = data.job_title || 'N/A';
+            companyNameEl.textContent = data.company_name || 'N/A';
+            if (data.interview_status === 'Invited' || data.interview_status === 'Resume Submitted') {
+                showView(welcomeView);
+            } else {
+                displayError(`Interview status is '${data.interview_status}'. Cannot start.`);
+            }
+        } catch (error) {
+            displayError(error.message);
+        }
+    }
+
+    candidateDetailsForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!currentInterviewId) return displayError("Interview ID missing.");
+
+        const submitButton = document.getElementById('submit-details-button');
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mx-auto"></div> Starting...';
+
+        const cameraReady = await setupCamera();
+        if (!cameraReady) {
+            submitButton.disabled = false;
+            submitButton.innerHTML = 'Begin Interview <i class="fas fa-arrow-right ml-2"></i>';
+            return;
+        }
+
+        submitDetailsErrorEl.classList.add('hidden-section');
+        const formData = new FormData(candidateDetailsForm);
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/submit-details`, { method: 'POST', body: formData });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                throw new Error(err.message || 'Failed to submit details.');
+            }
+            await response.json();
+            await startInterviewFlow();
+        } catch (error) {
+            submitDetailsErrorEl.textContent = error.message;
+            submitDetailsErrorEl.classList.remove('hidden-section');
+        } finally {
+            submitButton.disabled = false;
+            submitButton.innerHTML = 'Begin Interview <i class="fas fa-arrow-right ml-2"></i>';
+        }
+    });
+
+    async function startInterviewFlow() {
+        showView(interviewView);
+        setInteractionStatus('processing', 'Preparing first question...');
+        try {
+            const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/start`, { method: 'POST' });
+            if (!response.ok) {
+                 if (response.status === 503) throw new Error("AI service unavailable. Check backend API key.");
+                const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                throw new Error(err.message || 'Failed to start.');
+            }
+            const data = await response.json();
+            await askQuestion(data.question.text);
+        } catch (error) {
+            displayError("Could not start interview. " + error.message);
+        }
+    }
+
+    async function submitResponse(responseText) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/next-question`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ response_text: responseText })
+            });
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                throw new Error(err.message || 'Failed to get next question.');
+            }
+            const data = await response.json();
+            if (data.interview_status === 'Completed') {
+                appendToTranscript('ai', data.question.text);
+                setInteractionStatus('speaking', 'Interview complete. Thank you.');
+                await playQuestionAudio(data.question.text);
+                setTimeout(() => showView(endedView), 1000);
+            } else {
+                await askQuestion(data.question.text);
+            }
+        } catch (error) {
+            setInteractionStatus('error', "Error processing response. Please wait.");
+            setTimeout(startInterviewFlow, 3000); // Attempt to recover
+        }
+    }
+
+    async function askQuestion(questionText) {
+        appendToTranscript('ai', questionText);
+        await playQuestionAudio(questionText);
+        setInteractionStatus('listening');
+    }
+
+    // --- Event Listeners ---
+    endInterviewButton.addEventListener('click', () => {
+        if (confirm("Are you sure you want to end the interview?")) {
+            clearTimeout(speechTimeout);
+            if (recognition && isListening) recognition.stop();
+            if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+            showView(endedView);
+        }
+    });
+
+    // --- Initial Load ---
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const invitationLink = urlParams.get('invite');
+        if (invitationLink) {
+            initiateInterview(invitationLink);
+        } else {
+            displayError("No invitation link found. Please use the link from your invitation.");
+        }
+    });
+
+</script>
+</body>
+</html>

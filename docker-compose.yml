@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0 # Using MySQL version 8.0, you can choose another version if needed
+    container_name: ai_interview_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: 'your_strong_root_password' # Change this!
+      MYSQL_DATABASE: 'ai_interview_portal_db'        # As per your schema
+      MYSQL_USER: 'your_mysql_user'                   # User your backend will use
+      MYSQL_PASSWORD: 'your_mysql_password'           # Password for the user
+    ports:
+      - "3306:3306" # Exposes MySQL port 3306 to your host machine
+    volumes:
+      - mysql_data:/var/lib/mysql # Persists data in a Docker volume
+      # Optional: If you want to run your schema.sql on startup
+      # - ./database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mysql_data: # Defines the named volume for data persistence
