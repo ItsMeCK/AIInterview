@@ -512,7 +512,6 @@ def process_candidate_response(interview_id):
             cursor.execute("UPDATE interviews SET transcript_json=%s, status=%s WHERE id=%s",
                            (json.dumps(transcript), new_status, interview_id))
             conn.commit()
-            # This is where the magic happens!
             process_interview_results(interview_id)
         else:
             next_question = response_text
@@ -526,6 +525,39 @@ def process_candidate_response(interview_id):
         return jsonify({"question": {"text": next_question}, "interview_status": new_status}), 200
     finally:
         if conn.is_connected(): conn.close()
+
+
+@app.route('/api/interview/<interview_id>/end', methods=['POST'])
+def end_interview_manually(interview_id):
+    """Endpoint for when the candidate manually ends the interview."""
+    app.logger.info(f"Manual end triggered for interview_id: {interview_id}")
+    conn = get_db_connection()
+    if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # Check current status to avoid reprocessing
+        cursor.execute("SELECT status FROM interviews WHERE id = %s", (interview_id,))
+        result = cursor.fetchone()
+        if result and result['status'] in ['Completed', 'Pending Review', 'Reviewed']:
+            app.logger.warning(f"Interview {interview_id} already completed. No action taken.")
+            return jsonify({"message": "Interview already completed."}), 200
+
+        # Update status immediately
+        cursor.execute("UPDATE interviews SET status=%s, updated_at=%s WHERE id=%s",
+                       ('Completed', datetime.datetime.utcnow(), interview_id))
+        conn.commit()
+
+        # Trigger the analysis process
+        process_interview_results(interview_id)
+
+        return jsonify({"message": "Interview ended. Analysis initiated."}), 200
+    except Exception as e:
+        app.logger.error(f"Error manually ending interview {interview_id}: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "Failed to end interview."}), 500
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
 
 
 @app.route('/api/interview/<interview_id>/screenshot', methods=['POST'])

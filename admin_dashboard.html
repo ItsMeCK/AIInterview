@@ -479,11 +479,22 @@
 
 
     function renderInterviewTranscript(interview) {
-        return `<div>
-                    <h3 class="text-lg font-semibold text-gray-700 mb-2">Full Transcript</h3>
-                    <pre class="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 whitespace-pre-wrap h-96 overflow-y-auto">${interview.transcript || "No transcript available."}</pre>
-                </div>`;
+        let transcriptHTML = '<p class="text-gray-500 text-sm">No transcript available.</p>';
+        if (interview.transcript && Array.isArray(interview.transcript) && interview.transcript.length > 0) {
+            transcriptHTML = '<div class="space-y-4">';
+            interview.transcript.forEach(item => {
+                const actorClass = item.actor === 'ai' ? 'bg-indigo-50 text-indigo-800' : 'bg-green-50 text-green-800';
+                const actorName = item.actor === 'ai' ? 'AI Interviewer' : 'Candidate';
+                transcriptHTML += `<div class="${actorClass} p-3 rounded-lg">
+                                    <p class="font-semibold text-sm">${actorName}</p>
+                                    <p class="mt-1">${item.text}</p>
+                                  </div>`;
+            });
+            transcriptHTML += '</div>';
+        }
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Full Transcript</h3>${transcriptHTML}</div>`;
     }
+
     function renderInterviewAIQuestions(interview) {
         let questionsHTML = '<p class="text-gray-500 text-sm">No AI questions recorded.</p>';
         if (interview.questions && Array.isArray(interview.questions) && interview.questions.length > 0) {
@@ -496,14 +507,16 @@
             });
             questionsHTML += '</ul>';
         }
-        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Questions Asked by AI</h3>${questionsHTML}</div>`;
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Questions & Answers</h3>${questionsHTML}</div>`;
     }
+
     function renderInterviewSummary(interview) {
         return `<div>
                     <h3 class="text-lg font-semibold text-gray-700 mb-2">AI Generated Summary</h3>
-                    <p class="bg-gray-50 p-4 rounded-lg text-gray-700 whitespace-pre-wrap text-sm">${interview.summary || "No summary available."}</p>
+                    <p class="bg-gray-50 p-4 rounded-lg text-gray-700 whitespace-pre-wrap text-sm">${interview.ai_summary || "No summary available."}</p>
                 </div>`;
     }
+
     function renderInterviewScreenshots(interview) {
         let screenshotsHTML = `
             <div class="text-center py-8 px-4 border-2 border-dashed border-gray-300 rounded-lg">

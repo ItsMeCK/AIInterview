@@ -545,12 +545,19 @@
     // --- Event Listeners & Initial Load ---
     grantPermissionsBtn.addEventListener('click', handleGrantPermissions);
 
-    endInterviewButton.addEventListener('click', () => {
+    endInterviewButton.addEventListener('click', async () => {
         if (confirm("Are you sure you want to end the interview?")) {
             clearTimeout(speechTimeout);
             if (recognition && isListening) recognition.stop();
             if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
             if (screenshotInterval) clearInterval(screenshotInterval);
+
+            try {
+                await fetch(`${API_BASE_URL}/${currentInterviewId}/end`, { method: 'POST' });
+            } catch (error) {
+                console.error("Failed to notify backend of manual end:", error);
+            }
+
             interviewLayout.classList.add('hidden-overlay');
             showOverlay('ended');
         }
