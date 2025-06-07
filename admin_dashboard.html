@@ -255,8 +255,8 @@
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active-nav', 'bg-indigo-700', 'text-white'));
 
         if (sectionId === 'dashboard-overview-section') document.getElementById('nav-dashboard')?.classList.add('active-nav', 'bg-indigo-700', 'text-white');
-        else if (sectionId === 'job-details-section') document.getElementById('nav-jobs')?.classList.add('active-nav', 'bg-indigo-700', 'text-white'); // A bit generic, refine if job list page exists
-        else if (sectionId === 'interview-details-section') document.getElementById('nav-interviews')?.classList.add('active-nav', 'bg-indigo-700', 'text-white'); // A bit generic
+        else if (sectionId === 'job-details-section') document.getElementById('nav-jobs')?.classList.add('active-nav', 'bg-indigo-700', 'text-white');
+        else if (sectionId === 'interview-details-section') document.getElementById('nav-interviews')?.classList.add('active-nav', 'bg-indigo-700', 'text-white');
     }
 
     // --- Rendering Functions ---
@@ -385,12 +385,13 @@
             <div class="flex flex-wrap gap-2 mb-6">
                 <button onclick="openEditJobModal('${job.id}', '${job.title}', '${job.department}', \`${job.description}\`, '${job.status}')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 flex items-center text-sm"><i class="fas fa-edit mr-2"></i> Edit Job</button>
                 <button onclick="alert('Send Invites for Job ID: ${job.id} - Not implemented')" class="bg-sky-500 text-white px-4 py-2 rounded-lg hover:bg-sky-600 flex items-center text-sm"><i class="fas fa-paper-plane mr-2"></i> Send Invites</button>
+                <button onclick="window.location.href='/comparison_dashboard.html?job_id=${job.id}'" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 flex items-center text-sm"><i class="fas fa-users mr-2"></i> Compare Candidates</button>
             </div>
             <h3 class="text-xl font-semibold text-gray-800 mb-4">Interviews for this Job (${interviewsForJob.length})</h3>
         `;
         jobDetailsSection.innerHTML = html;
         const interviewListContainer = document.createElement('div');
-        renderInterviewList(interviewsForJob, interviewListContainer); // This will add its own h2, adjust if needed
+        renderInterviewList(interviewsForJob, interviewListContainer);
         jobDetailsSection.appendChild(interviewListContainer);
 
         navigateToSection('job-details-section', `Job: ${job.title}`);
@@ -401,16 +402,15 @@
             interviewDetailsSection.innerHTML = '<p class="text-gray-500">Interview details not found.</p>';
             return;
         }
-        // Default to Transcript tab
-        let activeTabContent = renderInterviewTranscript(interview);
-        let tabsState = {transcript: 'active-nav', questions: '', summary: '', screenshots: '', scoring: ''};
+        let activeTabContent = renderInterviewSummary(interview);
+        let tabsState = {summary: 'active-nav', transcript: '', questions: '', screenshots: '', scoring: ''};
 
         function updateTabs(activeKey) {
             Object.keys(tabsState).forEach(key => tabsState[key] = '');
             tabsState[activeKey] = 'active-nav';
-            if (activeKey === 'transcript') activeTabContent = renderInterviewTranscript(interview);
+            if (activeKey === 'summary') activeTabContent = renderInterviewSummary(interview);
+            else if (activeKey === 'transcript') activeTabContent = renderInterviewTranscript(interview);
             else if (activeKey === 'questions') activeTabContent = renderInterviewAIQuestions(interview);
-            else if (activeKey === 'summary') activeTabContent = renderInterviewSummary(interview);
             else if (activeKey === 'screenshots') activeTabContent = renderInterviewScreenshots(interview);
             else if (activeKey === 'scoring') activeTabContent = renderInterviewScoring(interview);
             renderFullView();
@@ -439,11 +439,11 @@
                 </div>
                 <div class="border-b border-gray-200 mb-6">
                     <nav class="flex space-x-1 sm:space-x-2 -mb-px flex-wrap">
-                        <button data-tab="transcript" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.transcript}">Transcript</button>
-                        <button data-tab="questions" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.questions}">AI Questions</button>
                         <button data-tab="summary" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.summary}">Summary</button>
+                        <button data-tab="transcript" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.transcript}">Transcript</button>
+                        <button data-tab="questions" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.questions}">Q&A</button>
                         <button data-tab="screenshots" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.screenshots}">Screenshots</button>
-                        <button data-tab="scoring" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.scoring}">Scoring</button>
+                        <button data-tab="scoring" class="tab-button px-4 py-2 font-medium rounded-md text-sm sm:text-base ${tabsState.scoring}">Feedback & Score</button>
                     </nav>
                 </div>
                 <div id="interview-tab-content" class="min-h-[200px]">${activeTabContent}</div>
@@ -452,31 +452,29 @@
             interviewDetailsSection.querySelectorAll('.tab-button').forEach(button => {
                 button.addEventListener('click', (e) => updateTabs(e.target.dataset.tab));
             });
-            if (tabsState.scoring) { // If scoring tab is active, attach form listener
-                const currentFeedbackForm = document.getElementById('feedback-form-in-details'); // Ensure unique ID if rendered multiple times
+            if (tabsState.scoring) {
+                const currentFeedbackForm = document.getElementById('feedback-form-in-details');
                 if (currentFeedbackForm) {
                     currentFeedbackForm.addEventListener('submit', handleFeedbackFormSubmitInDetails);
                 }
             }
         }
-        renderFullView(); // Initial render
+        renderFullView();
         navigateToSection('interview-details-section', `Interview: ${interview.candidate_name || 'Details'}`);
     }
 
-    function handleFeedbackFormSubmitInDetails(event) { // Specific handler for form inside details view
+    function handleFeedbackFormSubmitInDetails(event) {
         event.preventDefault();
         const id = event.target.elements['feedback-interview-id-in-details'].value;
         const scoreInput = event.target.elements['interviewScore-in-details'].value;
         const score = scoreInput.trim() === '' ? null : parseInt(scoreInput, 10);
         const feedbackText = event.target.elements['adminFeedback-in-details'].value;
-
         if (score !== null && (isNaN(score) || score < 0 || score > 100)) {
             alert("Score must be a number between 0 and 100, or left blank.");
             return;
         }
         saveInterviewFeedback(id, score, feedbackText);
     }
-
 
     function renderInterviewTranscript(interview) {
         let transcriptHTML = '<p class="text-gray-500 text-sm">No transcript available.</p>';
@@ -496,7 +494,7 @@
     }
 
     function renderInterviewAIQuestions(interview) {
-        let questionsHTML = '<p class="text-gray-500 text-sm">No AI questions recorded.</p>';
+        let questionsHTML = '<p class="text-gray-500 text-sm">No questions & answers recorded.</p>';
         if (interview.questions && Array.isArray(interview.questions) && interview.questions.length > 0) {
             questionsHTML = '<ul class="space-y-4">';
             interview.questions.forEach((item, index) => {
@@ -537,7 +535,6 @@
     }
 
     function renderInterviewScoring(interview) {
-        // Note: Using unique IDs for form elements within this dynamically rendered content
         return `<div>
                     <h3 class="text-lg font-semibold text-gray-700 mb-2">Scoring & Admin Feedback</h3>
                     <form id="feedback-form-in-details" class="space-y-4">
@@ -555,7 +552,6 @@
                 </div>`;
     }
 
-
     // --- Modal Handling ---
     function openAddJobModal() {
         jobModalTitle.textContent = 'Add New Job';
@@ -566,7 +562,7 @@
     }
     function openEditJobModal(id, title, department, description, status) {
         jobModalTitle.textContent = 'Edit Job Posting';
-        jobForm.reset(); // Clear previous states
+        jobForm.reset();
         jobIdInput.value = id;
         jobForm.elements['title'].value = title;
         jobForm.elements['department'].value = department;
@@ -591,7 +587,6 @@
         feedbackModal.classList.remove('active');
     }
 
-
     // --- API Call Handlers ---
     async function loadDashboard() {
         try {
@@ -604,11 +599,11 @@
             navigateToSection('dashboard-overview-section', 'Admin Dashboard');
             currentView = { type: 'dashboard' };
         } catch (error) {
-            // Error already displayed by fetchData
+            // Error displayed by fetchData
         }
     }
 
-    let currentView = { type: 'dashboard' }; // To track what was viewed before details
+    let currentView = { type: 'dashboard' };
 
     async function loadJobDetails(jobId) {
         try {
@@ -617,7 +612,7 @@
             renderJobDetails(job, interviewsForJob);
             currentView = { type: 'job-details', id: jobId };
         } catch (error) {
-            navigateToSection('dashboard-overview-section', 'Admin Dashboard'); // Fallback
+            navigateToSection('dashboard-overview-section', 'Admin Dashboard');
         }
     }
 
@@ -625,20 +620,19 @@
         try {
             const interview = await fetchData(`${API_BASE_URL}/interviews/${interviewId}`);
             renderInterviewDetails(interview);
-            // Store current view *before* navigating to interview details, if not already on details.
             if (currentView.type !== 'interview-details') {
                  sessionStorage.setItem('previousView', JSON.stringify(currentView));
             }
             currentView = { type: 'interview-details', id: interviewId };
         } catch (error) {
-             goBackToPreviousViewOrDashboard(); // Fallback
+             goBackToPreviousViewOrDashboard();
         }
     }
 
     function goBackToPreviousViewOrDashboard() {
         const previousViewJSON = sessionStorage.getItem('previousView');
         if (previousViewJSON) {
-            sessionStorage.removeItem('previousView'); // Clear after use
+            sessionStorage.removeItem('previousView');
             const previousView = JSON.parse(previousViewJSON);
             if (previousView.type === 'job-details' && previousView.id) {
                 loadJobDetails(previousView.id);
@@ -649,7 +643,6 @@
             loadDashboard();
         }
     }
-
 
     jobForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -674,9 +667,9 @@
                 body: JSON.stringify(jobData)
             });
             closeJobFormModal();
-            loadDashboard(); // Refresh dashboard or specific list
+            loadDashboard();
             if (jobId && currentView.type === 'job-details' && currentView.id === jobId) {
-                 loadJobDetails(jobId); // Refresh detail view if currently viewing it
+                 loadJobDetails(jobId);
             }
         } catch (error) {
             jobFormError.textContent = error.message || "Failed to save job.";
@@ -688,12 +681,12 @@
         if (confirm("Are you sure you want to delete this job? This action cannot be undone.")) {
             try {
                 await fetchData(`${API_BASE_URL}/jobs/${jobId}`, { method: 'DELETE' });
-                loadDashboard(); // Refresh
+                loadDashboard();
                 if (currentView.type === 'job-details' && currentView.id === jobId) {
-                    loadDashboard(); // If deleting the job being viewed, go to dashboard
+                    loadDashboard();
                 }
             } catch (error) {
-                // Error already displayed
+                // Error handled by fetchData
             }
         }
     }
@@ -711,7 +704,7 @@
             feedbackFormError.classList.remove('hidden');
             return;
         }
-        saveInterviewFeedback(interviewId, score, feedbackText, true); // Pass true to close modal
+        saveInterviewFeedback(interviewId, score, feedbackText, true);
     });
 
     async function saveInterviewFeedback(interviewId, score, feedbackText, closeModalOnSuccess = false) {
@@ -722,20 +715,19 @@
                 body: JSON.stringify({ score: score, feedback: feedbackText })
             });
             if (closeModalOnSuccess) closeFeedbackModal();
-            // Refresh relevant views
             if (currentView.type === 'interview-details' && currentView.id === interviewId) {
-                renderInterviewDetails(updatedInterview); // Re-render the details view
+                renderInterviewDetails(updatedInterview);
             } else if (currentView.type === 'dashboard') {
-                loadDashboard(); // Or just refresh interview list part
+                loadDashboard();
             } else if (currentView.type === 'job-details') {
-                loadJobDetails(currentView.id); // Refresh job details which includes its interviews
+                loadJobDetails(currentView.id);
             }
 
         } catch (error) {
-            if (closeModalOnSuccess) { // If called from the main modal
+            if (closeModalOnSuccess) {
                 feedbackFormError.textContent = error.message || "Failed to save feedback.";
                 feedbackFormError.classList.remove('hidden');
-            } else { // If called from details view, rely on global error or handle differently
+            } else {
                 displayError(error.message || "Failed to save feedback.");
             }
         }
@@ -750,7 +742,6 @@
     const sidebarTitle = document.getElementById('sidebar-title');
     const itemTexts = document.querySelectorAll('.item-text');
     const userInfo = document.getElementById('user-info');
-
 
     function toggleSidebar(forceOpen = null) {
         const isOpen = forceOpen !== null ? forceOpen : !sidebar.classList.contains('w-20');
@@ -778,20 +769,24 @@
     sidebarOpenMobile.addEventListener('click', () => sidebar.classList.add('open'));
     sidebarCloseMobile.addEventListener('click', () => sidebar.classList.remove('open'));
 
-
     // --- Navigation Event Listeners ---
     document.getElementById('nav-dashboard').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
-    document.getElementById('nav-jobs').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); /* Or a dedicated job list page */ });
-    document.getElementById('nav-interviews').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); /* Or a dedicated interview list page */ });
+    document.getElementById('nav-jobs').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
+    document.getElementById('nav-interviews').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
     document.getElementById('logout-button').addEventListener('click', (e) => { e.preventDefault(); alert("Logout - Not implemented"); });
-
 
     // --- Initial Load ---
     document.addEventListener('DOMContentLoaded', () => {
-        loadDashboard();
-        // Check screen size for initial sidebar state
-        if (window.innerWidth < 768) { // Tailwind's 'md' breakpoint
-            toggleSidebar(true); // Collapse on mobile initially
+        const urlParams = new URLSearchParams(window.location.search);
+        const interviewId = urlParams.get('interview');
+        if (interviewId) {
+            loadInterviewDetails(interviewId);
+        } else {
+            loadDashboard();
+        }
+
+        if (window.innerWidth < 768) {
+            toggleSidebar(true);
         }
     });
 

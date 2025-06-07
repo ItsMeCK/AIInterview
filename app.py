@@ -30,6 +30,7 @@ DB_CONFIG = {
 }
 
 # IMPORTANT: Use environment variables for sensitive keys in production
+
 if OPENAI_API_KEY == "YOUR_OPENAI_API_KEY":
     app.logger.warning("OpenAI API Key is not set. AI features will not work.")
 
@@ -277,17 +278,70 @@ def manage_job_detail(job_id):
 def get_admin_interviews():
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
-    job_id_filter, status_filter = request.args.get('job_id'), request.args.get('status')
+
+    # Get query parameters for pagination, sorting, and searching
+    job_id_filter = request.args.get('job_id')
+    status_filter = request.args.get('status')
+    limit = request.args.get('limit', type=int)
+    offset = request.args.get('offset', type=int)
+    sort_by = request.args.get('sort_by', 'score')
+    sort_order = request.args.get('sort_order', 'desc')
+    search_query = request.args.get('search', '')
+
+    # --- Validate sorting parameters to prevent SQL injection ---
+    allowed_sort_columns = ['score', 'interview_date', 'status']
+    if sort_by not in allowed_sort_columns:
+        sort_by = 'score'  # Default
+    if sort_order.lower() not in ['asc', 'desc']:
+        sort_order = 'desc'  # Default
+
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT i.*, j.title as job_title, c.name as candidate_name FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id"
-        conditions, params = [], []
-        if job_id_filter: conditions.append("i.job_id = %s"); params.append(job_id_filter)
-        if status_filter: conditions.append("i.status = %s"); params.append(status_filter)
-        if conditions: query += " WHERE " + " AND ".join(conditions)
-        query += " ORDER BY i.created_at DESC"
-        cursor.execute(query, tuple(params))
+
+        base_query = "FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id"
+        conditions = []
+        params = []
+
+        if job_id_filter:
+            conditions.append("i.job_id = %s")
+            params.append(job_id_filter)
+        if status_filter:
+            conditions.append("i.status = %s")
+            params.append(status_filter)
+        if search_query:
+            conditions.append("c.name LIKE %s")
+            params.append(f"%{search_query}%")
+
+        where_clause = ""
+        if conditions:
+            where_clause = " WHERE " + " AND ".join(conditions)
+
+        # --- Check if this is a paginated request ---
+        is_paginated_request = limit is not None and offset is not None
+
+        # --- Get Total Count for Pagination (only if needed) ---
+        if is_paginated_request:
+            count_query = f"SELECT COUNT(i.id) as total {base_query}{where_clause}"
+            cursor.execute(count_query, tuple(params))
+            total_records = cursor.fetchone()['total']
+
+        # --- Build the main data query ---
+        data_query_builder = [
+            f"SELECT i.*, j.title as job_title, c.name as candidate_name, c.email as candidate_email {base_query}{where_clause}",
+            f"ORDER BY {sort_by} {sort_order}"
+        ]
+
+        final_params = list(params)
+        if is_paginated_request:
+            data_query_builder.append("LIMIT %s OFFSET %s")
+            final_params.extend([limit, offset])
+
+        data_query = " ".join(data_query_builder)
+
+        cursor.execute(data_query, tuple(final_params))
         interviews = cursor.fetchall()
+
+        # Process JSON fields
         for interview in interviews:
             for key in ['transcript_json', 'ai_questions_json', 'screenshot_paths_json']:
                 if interview.get(key) and isinstance(interview[key], str):
@@ -295,12 +349,23 @@ def get_admin_interviews():
                         interview[key] = json.loads(interview[key])
                     except json.JSONDecodeError:
                         interview[key] = None
-        return jsonify(serialize_datetime_in_obj(interviews)), 200
+
+        # --- Return data in the correct format ---
+        if is_paginated_request:
+            return jsonify({
+                "total": total_records,
+                "interviews": serialize_datetime_in_obj(interviews)
+            }), 200
+        else:
+            return jsonify(serialize_datetime_in_obj(interviews)), 200
+
     except mysql.connector.Error as err:
         app.logger.error(f"DB error in get_admin_interviews: {err}\n{traceback.format_exc()}")
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
-        if conn.is_connected(): cursor.close(); conn.close()
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 
 @app.route('/api/admin/interviews/<interview_id>', methods=['GET'])
