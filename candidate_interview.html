@@ -38,7 +38,7 @@
             box-shadow: 0 0 15px rgba(79, 70, 229, 0.3);
         }
         .ai-avatar.speaking {
-            border-color: #6366F1; /* Indigo 500 */
+            border-color: #6366F1;
             box-shadow: 0 0 30px rgba(99, 102, 241, 0.6);
             transform: scale(1.05);
         }
@@ -262,6 +262,7 @@
     let currentInterviewId = null;
     let audioContext;
     let speechTimeout;
+    let screenshotInterval;
     let isListening = false;
     let cameraStream = null;
 
@@ -326,6 +327,7 @@
         interviewLayout.classList.add('hidden-overlay');
         showOverlay('error');
         if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+        if (screenshotInterval) clearInterval(screenshotInterval);
     }
 
     function appendToTranscript(actor, text) {
@@ -377,7 +379,7 @@
             return false;
         }
         try {
-            cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); // Request audio too for consistency
+            cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             cameraFeed.srcObject = cameraStream;
             return true;
         } catch (err) {
@@ -385,6 +387,28 @@
             return false;
         }
     }
+
+    async function captureAndSendScreenshot() {
+        if (!cameraStream || !currentInterviewId) return;
+
+        const canvas = document.createElement('canvas');
+        const video = cameraFeed;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+        try {
+            await fetch(`${API_BASE_URL}/${currentInterviewId}/screenshot`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: imageDataUrl })
+            });
+        } catch (error) {
+            console.error("Failed to send screenshot:", error);
+        }
+    }
+
 
     function playQuestionAudio(text) {
         return new Promise(async (resolve) => {
@@ -467,6 +491,10 @@
         showOverlay(null); // Hide all overlays
         interviewLayout.classList.remove('hidden-overlay');
         setInteractionStatus('processing', 'Preparing first question...');
+
+        // Start capturing screenshots
+        screenshotInterval = setInterval(captureAndSendScreenshot, 30000);
+
         try {
             const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/start`, { method: 'POST' });
             if (!response.ok) {
@@ -497,6 +525,7 @@
                 setTimeout(() => {
                     interviewLayout.classList.add('hidden-overlay');
                     showOverlay('ended');
+                    if(screenshotInterval) clearInterval(screenshotInterval);
                 }, 2000);
             } else {
                 await askQuestion(data.question.text);
@@ -521,6 +550,7 @@
             clearTimeout(speechTimeout);
             if (recognition && isListening) recognition.stop();
             if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+            if (screenshotInterval) clearInterval(screenshotInterval);
             interviewLayout.classList.add('hidden-overlay');
             showOverlay('ended');
         }

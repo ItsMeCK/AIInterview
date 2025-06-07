@@ -5,6 +5,9 @@ import datetime
 import uuid
 import os
 import json
+import logging
+import base64
+import traceback
 
 # --- Langchain and OpenAI Imports ---
 from langchain_openai import ChatOpenAI
@@ -16,6 +19,7 @@ from openai import OpenAI  # Import the OpenAI client directly for TTS
 # --- Flask App Initialization ---
 app = Flask(__name__)
 CORS(app)
+logging.basicConfig(level=logging.INFO)
 
 # --- Configuration ---
 DB_CONFIG = {
@@ -27,120 +31,171 @@ DB_CONFIG = {
 
 # IMPORTANT: Use environment variables for sensitive keys in production
 if OPENAI_API_KEY == "YOUR_OPENAI_API_KEY":
-    print("WARNING: OpenAI API Key is not set. AI features will not work.")
+    app.logger.warning("OpenAI API Key is not set. AI features will not work.")
 
 # Initialize OpenAI client for TTS
 try:
     openai_client = OpenAI(api_key=OPENAI_API_KEY)
 except Exception as e:
     openai_client = None
-    print(f"Could not initialize OpenAI client: {e}")
+    app.logger.error(f"Could not initialize OpenAI client: {e}\n{traceback.format_exc()}")
 
 # --- File Upload Configuration ---
 UPLOAD_FOLDER = 'uploads'
-RESUME_FOLDER = os.path.join(UPLOAD_FOLDER, 'resumes')
-SCREENSHOT_FOLDER = os.path.join(UPLOAD_FOLDER, 'screenshots')
-SYSTEM_FOLDER = os.path.join(UPLOAD_FOLDER, 'system')
-
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['RESUME_FOLDER'] = RESUME_FOLDER
-app.config['SCREENSHOT_FOLDER'] = SCREENSHOT_FOLDER
-app.config['SYSTEM_FOLDER'] = SYSTEM_FOLDER
+app.config['RESUME_FOLDER'] = os.path.join(UPLOAD_FOLDER, 'resumes')
+app.config['SCREENSHOT_FOLDER'] = os.path.join(UPLOAD_FOLDER, 'screenshots')
 
-ALLOWED_RESUME_EXTENSIONS = {'pdf', 'docx', 'doc', 'txt'}
-
-for folder in [UPLOAD_FOLDER, RESUME_FOLDER, SCREENSHOT_FOLDER, SYSTEM_FOLDER]:
+for folder in [app.config['UPLOAD_FOLDER'], app.config['RESUME_FOLDER'], app.config['SCREENSHOT_FOLDER']]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
+# --- Prompts ---
+INTERVIEW_SYSTEM_PROMPT = """
+You are an expert technical interviewer named 'Alex'. Your goal is to conduct a natural, conversational interview.
+Your persona: Friendly, professional, and insightful.
+Your instructions:
+1.  **Analyze Context**: You will be given a Job Description (JD) and a summary of the candidate's resume. Use these to formulate relevant questions.
+2.  **Start the Interview**: Begin with a warm, brief greeting. Address the candidate by name. State the role you're interviewing them for. Ask your first opening question.
+3.  **Conversational Flow**: Ask only ONE question at a time. Your questions should be based on the JD, resume, and the candidate's previous responses. Listen to the candidate's answer and ask a relevant, logical follow-up question. Keep your questions concise (under 40 words).
+4.  **Handling Clarifications**: If the candidate asks for clarification (e.g., "Could you rephrase that?"), provide a clear explanation and then gently repeat or rephrase your original question.
+5.  **Ending the Interview**: After 5-7 meaningful questions, conclude the interview with a polite closing statement.
+6.  **Termination Signal**: After your closing statement, and only then, output the special token `[INTERVIEW_COMPLETE]` on a new line. This is a strict instruction.
+"""
 
-def allowed_file(filename, allowed_extensions_set):
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in allowed_extensions_set
+ANALYSIS_SYSTEM_PROMPT = """
+You are an expert AI hiring assistant. Your task is to analyze an interview transcript and provide a structured assessment of the candidate.
+You will be given the Job Description, the candidate's resume summary, and the full interview transcript.
+Based on all the provided information, perform the following actions:
+1.  **Summarize the Interview**: Write a concise summary (3-4 sentences) of the candidate's performance, highlighting their key strengths and potential weaknesses relative to the job requirements.
+2.  **Score the Candidate**: Provide a numerical score from 0 to 100, where 100 is a perfect match for the role. The score should reflect their technical skills, communication, and overall fit based on the conversation.
+
+**Output Format**:
+Provide your response as a single, valid JSON object with the following keys:
+{
+  "summary": "Your detailed summary here.",
+  "score": your_numerical_score_here
+}
+Do not include any other text or explanation outside of this JSON object.
+"""
 
 
-# --- Database Connection Helper & Other Helpers ---
+# --- Helper Functions ---
 def get_db_connection():
     try:
         conn = mysql.connector.connect(**DB_CONFIG)
         return conn
     except mysql.connector.Error as err:
-        print(f"Error connecting to MySQL: {err}")
+        app.logger.error(f"Error connecting to MySQL: {err}")
         return None
 
 
-def generate_id(prefix="item_"): return prefix + str(uuid.uuid4())
+def generate_id(prefix="item_"):
+    return prefix + str(uuid.uuid4())
 
 
 def serialize_datetime_in_obj(obj):
-    if isinstance(obj, dict): return {k: serialize_datetime_in_obj(v) for k, v in obj.items()}
-    if isinstance(obj, list): return [serialize_datetime_in_obj(elem) for elem in obj]
-    if isinstance(obj, datetime.datetime): return obj.isoformat()
+    if isinstance(obj, dict):
+        return {k: serialize_datetime_in_obj(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [serialize_datetime_in_obj(elem) for elem in obj]
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
     return obj
 
 
-def parse_resume_from_file(resume_filepath_db):
-    """
-    In a real app, this would use libraries like PyPDF2 or python-docx
-    to extract text from the actual resume file.
-    For this demo, we return placeholder text.
-    """
-    if not resume_filepath_db:
-        return "No resume provided."
-    filename = os.path.basename(resume_filepath_db)
-    # This is a placeholder. A real implementation would involve text extraction.
-    return f"The candidate's resume ({filename}) indicates strong skills in Python, Flask, and project management. They have 5 years of experience in backend development."
-
-
-def get_llm():
-    if not openai_client or OPENAI_API_KEY == "YOUR_OPENAI_API_KEY":
-        return None
-    return ChatOpenAI(temperature=0.7, openai_api_key=OPENAI_API_KEY, model_name="gpt-4-turbo-preview")
-
-
-# --- Enhanced Interview Prompt ---
-INTERVIEW_SYSTEM_PROMPT = """
-You are an expert technical interviewer named 'Alex'. Your goal is to conduct a natural, conversational interview.
-
-Your persona: Friendly, professional, and insightful.
-
-Your instructions:
-1.  **Analyze Context**: You will be given a Job Description (JD) and a summary of the candidate's resume. Use these to formulate relevant questions.
-2.  **Start the Interview**: Begin with a warm, brief greeting. Address the candidate by name. State the role you're interviewing them for. Ask your first opening question.
-3.  **Conversational Flow**:
-    - Ask only ONE question at a time.
-    - Your questions should be based on the JD, resume, and the candidate's previous responses.
-    - Listen to the candidate's answer and ask a relevant, logical follow-up question.
-    - Keep your questions concise (under 40 words).
-4.  **Handling Clarifications**: If the candidate asks for clarification (e.g., "Could you rephrase that?"), provide a clear explanation and then gently repeat or rephrase your original question.
-5.  **Ending the Interview**: When you feel you have enough information (typically after 5-7 meaningful questions), conclude the interview with a polite closing statement.
-6.  **Termination Signal**: After your closing statement, and only then, output the special token `[INTERVIEW_COMPLETE]` on a new line. This is a strict instruction.
-"""
+def get_llm(temperature=0.7):
+    if not openai_client or OPENAI_API_KEY == "YOUR_OPENAI_API_KEY": return None
+    return ChatOpenAI(temperature=temperature, openai_api_key=OPENAI_API_KEY, model_name="gpt-4-turbo-preview")
 
 
 def build_interview_messages(job_description, resume_summary, candidate_name, conversation_history):
-    """Builds the full message list for the LLM."""
     messages = [SystemMessage(content=INTERVIEW_SYSTEM_PROMPT)]
-
-    # Construct the initial context for the AI.
     context = (
-        f"Job Description:\n{job_description}\n\n"
-        f"Candidate Resume Summary:\n{resume_summary}\n\n"
-        f"Candidate Name: {candidate_name}\n\n"
-        f"Conversation History:\n"
-    )
-
+        f"Job Description:\n{job_description}\n\nCandidate Resume Summary:\n{resume_summary}\n\nCandidate Name: {candidate_name}\n\nConversation History:\n")
     if not conversation_history:
         context += "The interview is just beginning. Greet the candidate and ask your first question."
     else:
         history_str = "\n".join([f"{msg['actor']}: {msg['text']}" for msg in conversation_history])
         context += history_str
-
     messages.append(HumanMessage(content=context))
     return messages
 
 
-# --- Admin API Endpoints ---
+def parse_resume_from_file(resume_filepath_db):
+    if not resume_filepath_db: return "No resume provided."
+    return f"The candidate's resume indicates strong skills in Python, Flask, and project management. They have 5 years of experience in backend development."
+
+
+# --- Post-Interview Processing ---
+def process_interview_results(interview_id):
+    app.logger.info(f"Starting post-interview analysis for interview_id: {interview_id}")
+    conn = get_db_connection()
+    if not conn: return
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        query = "SELECT i.transcript_json, j.description as jd, c.resume_filename FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
+        cursor.execute(query, (interview_id,))
+        interview_data = cursor.fetchone()
+
+        if not interview_data or not interview_data.get('transcript_json'):
+            app.logger.warning(f"No transcript found for interview {interview_id}. Aborting analysis.")
+            return
+
+        transcript = interview_data['transcript_json']
+        if isinstance(transcript, str):
+            transcript = json.loads(transcript)
+
+        # 1. Create structured Q&A data
+        questions_and_answers = []
+        for i, turn in enumerate(transcript):
+            if turn['actor'] == 'ai' and i + 1 < len(transcript) and transcript[i + 1]['actor'] == 'candidate':
+                questions_and_answers.append({
+                    "q": turn['text'],
+                    "a": transcript[i + 1]['text']
+                })
+
+        # 2. Generate Summary and Score with AI
+        llm = get_llm(temperature=0.2)  # Use lower temp for consistent analysis
+        if not llm:
+            app.logger.error("LLM not available for analysis.")
+            return
+
+        resume_summary = parse_resume_from_file(interview_data.get('resume_filename'))
+        full_transcript_text = "\n".join([f"{t['actor']}: {t['text']}" for t in transcript])
+
+        analysis_context = (
+            f"Job Description:\n{interview_data['jd']}\n\nCandidate Resume Summary:\n{resume_summary}\n\nFull Interview Transcript:\n{full_transcript_text}")
+        analysis_messages = [SystemMessage(content=ANALYSIS_SYSTEM_PROMPT), HumanMessage(content=analysis_context)]
+
+        ai_response = llm.invoke(analysis_messages)
+
+        summary_text = ""
+        score_val = None
+        try:
+            analysis_result = json.loads(ai_response.content)
+            summary_text = analysis_result.get("summary", "AI summary could not be generated.")
+            score_val = analysis_result.get("score")
+        except json.JSONDecodeError:
+            app.logger.error(f"Failed to decode AI analysis JSON for interview {interview_id}")
+            summary_text = "Error processing AI analysis."
+
+        # 3. Update the database
+        update_query = "UPDATE interviews SET ai_summary = %s, score = %s, ai_questions_json = %s, status = %s WHERE id = %s"
+        cursor.execute(update_query,
+                       (summary_text, score_val, json.dumps(questions_and_answers), 'Pending Review', interview_id))
+        conn.commit()
+        app.logger.info(f"Successfully analyzed and updated interview {interview_id}")
+
+    except Exception as e:
+        app.logger.error(f"Error during post-interview processing for {interview_id}: {e}\n{traceback.format_exc()}")
+        if conn.is_connected(): conn.rollback()
+    finally:
+        if conn.is_connected(): cursor.close(); conn.close()
+
+
+# --- Admin Endpoints ---
 @app.route('/api/admin/jobs', methods=['GET', 'POST'])
 def manage_jobs():
     conn = get_db_connection()
@@ -168,6 +223,7 @@ def manage_jobs():
             cursor.execute("SELECT * FROM jobs WHERE id = %s", (new_job_id,))
             return jsonify(serialize_datetime_in_obj(cursor.fetchone())), 201
     except mysql.connector.Error as err:
+        app.logger.error(f"DB error in manage_jobs: {err}\n{traceback.format_exc()}")
         if conn.is_connected(): conn.rollback()
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
@@ -210,6 +266,7 @@ def manage_job_detail(job_id):
             if cursor.rowcount == 0: return jsonify({"message": "Job not found"}), 404
             return jsonify({"message": "Job deleted successfully"}), 200
     except mysql.connector.Error as err:
+        app.logger.error(f"DB error in manage_job_detail for {job_id}: {err}\n{traceback.format_exc()}")
         if request.method in ['PUT', 'DELETE'] and conn.is_connected(): conn.rollback()
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
@@ -240,6 +297,7 @@ def get_admin_interviews():
                         interview[key] = None
         return jsonify(serialize_datetime_in_obj(interviews)), 200
     except mysql.connector.Error as err:
+        app.logger.error(f"DB error in get_admin_interviews: {err}\n{traceback.format_exc()}")
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
         if conn.is_connected(): cursor.close(); conn.close()
@@ -266,6 +324,7 @@ def get_admin_interview_detail(interview_id):
         interview['screenshots'] = interview.get('screenshot_paths_json') or []
         return jsonify(serialize_datetime_in_obj(interview)), 200
     except mysql.connector.Error as err:
+        app.logger.error(f"DB error in get_admin_interview_detail for {interview_id}: {err}\n{traceback.format_exc()}")
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
         if conn.is_connected(): cursor.close(); conn.close()
@@ -309,6 +368,7 @@ def score_interview(interview_id):
             updated_interview['screenshots'] = updated_interview.get('screenshot_paths_json') or []
         return jsonify(serialize_datetime_in_obj(updated_interview)), 200
     except (mysql.connector.Error, ValueError) as err:
+        app.logger.error(f"Error in score_interview for {interview_id}: {err}\n{traceback.format_exc()}")
         if conn.is_connected(): conn.rollback()
         return jsonify({"message": f"Operation failed: {str(err)}"}), 500
     finally:
@@ -332,6 +392,7 @@ def get_dashboard_summary():
         return jsonify({"open_positions": open_jobs, "total_applications": total_applications,
                         "interviews_scheduled": interviews_scheduled, "pending_reviews": pending_reviews}), 200
     except mysql.connector.Error as err:
+        app.logger.error(f"DB error in get_dashboard_summary: {err}\n{traceback.format_exc()}")
         return jsonify({"message": f"DB error: {err.msg}"}), 500
     finally:
         if conn.is_connected(): cursor.close(); conn.close()
@@ -344,19 +405,13 @@ def get_interview_by_link(invitation_link_guid):
     if not conn: return jsonify({"message": "Database connection failed"}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT i.id as interview_id, i.status as interview_status, i.candidate_id, j.id as job_id, j.title as job_title, j.description as job_description, co.name as company_name FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN companies co ON j.company_id = co.id WHERE i.invitation_link = %s"
+        query = "SELECT i.id as interview_id, i.status as interview_status, j.title as job_title, co.name as company_name FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN companies co ON j.company_id = co.id WHERE i.invitation_link = %s"
         cursor.execute(query, (invitation_link_guid,))
-        interview_data = cursor.fetchone()
-        if not interview_data: return jsonify({"message": "Invalid or expired invitation link"}), 404
-        allowed_statuses = ['Invited', 'Resume Submitted', 'In Progress']
-        if interview_data['interview_status'] not in allowed_statuses:
-            return jsonify(
-                {"message": f"Interview cannot be accessed. Status: {interview_data['interview_status']}"}), 403
-        return jsonify(serialize_datetime_in_obj(interview_data)), 200
-    except mysql.connector.Error as err:
-        return jsonify({"message": f"DB error: {err.msg}"}), 500
+        data = cursor.fetchone()
+        if not data: return jsonify({"message": "Invalid invitation link"}), 404
+        return jsonify(data), 200
     finally:
-        if conn.is_connected(): cursor.close(); conn.close()
+        if conn and conn.is_connected(): conn.close()
 
 
 @app.route('/api/interview/<interview_id>/submit-details', methods=['POST'])
@@ -365,153 +420,173 @@ def submit_candidate_details_and_resume(interview_id):
     if not conn: return jsonify({"message": "Database connection failed"}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, status, candidate_id FROM interviews WHERE id = %s", (interview_id,))
-        interview = cursor.fetchone()
-        if not interview: return jsonify({"message": "Interview not found"}), 404
         if 'resumeFile' not in request.files: return jsonify({"message": "Resume file missing."}), 400
         resume_file = request.files['resumeFile']
         secure_name = str(uuid.uuid4()) + os.path.splitext(resume_file.filename)[1]
         resume_save_path = os.path.join(app.config['RESUME_FOLDER'], secure_name)
         resume_file.save(resume_save_path)
         resume_filepath_db = f"/uploads/resumes/{secure_name}"
-        candidate_id = interview.get('candidate_id') or generate_id("cand_")
+
+        candidate_id = str(uuid.uuid4())
         now_utc = datetime.datetime.utcnow()
+
         cursor.execute(
-            "INSERT INTO candidates (id,name,email,resume_filename,created_at,updated_at) VALUES (%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE name=%s, email=%s, resume_filename=%s, updated_at=%s",
-            (candidate_id, request.form['candidateName'], request.form['candidateEmail'], resume_filepath_db, now_utc,
-             now_utc, request.form['candidateName'], request.form['candidateEmail'], resume_filepath_db, now_utc))
-        cursor.execute("UPDATE interviews SET candidate_id=%s,status='Resume Submitted',updated_at=%s WHERE id=%s",
+            "INSERT INTO candidates (id, name, email, resume_filename, created_at) VALUES (%s, %s, %s, %s, %s)",
+            (candidate_id, request.form['candidateName'], request.form['candidateEmail'], resume_filepath_db, now_utc))
+        cursor.execute("UPDATE interviews SET candidate_id=%s, status='Resume Submitted', updated_at=%s WHERE id=%s",
                        (candidate_id, now_utc, interview_id))
         conn.commit()
-        return jsonify({"message": "Details submitted. Ready for interview.", "candidateId": candidate_id}), 200
+        return jsonify({"message": "Details submitted.", "candidateId": candidate_id}), 200
     except Exception as e:
+        app.logger.error(f"Error in submit-details: {e}\n{traceback.format_exc()}")
         if conn.is_connected(): conn.rollback()
-        return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"message": "An error occurred."}), 500
     finally:
-        if conn.is_connected(): cursor.close(); conn.close()
+        if conn.is_connected(): conn.close()
 
 
 @app.route('/api/interview/<interview_id>/start', methods=['POST'])
 def start_ai_interview(interview_id):
     llm = get_llm()
-    if not llm: return jsonify({"message": "AI service not available. Cannot start."}), 503
+    if not llm: return jsonify({"message": "AI service not available."}), 503
 
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
 
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT i.status, j.description as jd, c.name as candidate_name, c.resume_filename FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
+        query = "SELECT j.description as jd, c.name as candidate_name, c.resume_filename FROM interviews i JOIN jobs j ON i.job_id = j.id JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
         cursor.execute(query, (interview_id,))
-        interview_data = cursor.fetchone()
+        data = cursor.fetchone()
 
-        if not interview_data: return jsonify({"message": "Interview not found"}), 404
-        if interview_data['status'] != 'Resume Submitted':
-            return jsonify({"message": f"Interview cannot be started. Status: {interview_data['status']}"}), 403
+        if not data: return jsonify({"message": "Interview data not found"}), 404
 
-        resume_content = parse_resume_from_file(interview_data.get('resume_filename'))
-        candidate_name = interview_data.get('candidate_name', 'there')
-
-        # Build messages for the initial greeting and first question
-        messages = build_interview_messages(interview_data['jd'], resume_content, candidate_name, [])
+        resume_summary = parse_resume_from_file(data.get('resume_filename'))
+        messages = build_interview_messages(data['jd'], resume_summary, data['candidate_name'], [])
         ai_response = llm.invoke(messages)
-        first_question_text = ai_response.content.strip()
+        first_question = ai_response.content.strip()
 
-        # Save the first turn to the transcript
-        transcript = [{"actor": "ai", "text": first_question_text, "timestamp": datetime.datetime.utcnow().isoformat()}]
+        transcript = [{"actor": "ai", "text": first_question, "timestamp": datetime.datetime.utcnow().isoformat()}]
 
         cursor.execute("UPDATE interviews SET status='In Progress', transcript_json=%s, updated_at=%s WHERE id=%s",
                        (json.dumps(transcript), datetime.datetime.utcnow(), interview_id))
         conn.commit()
 
-        return jsonify({"question": {"text": first_question_text}}), 200
-
-    except Exception as e:
-        if conn.is_connected(): conn.rollback()
-        return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"question": {"text": first_question}}), 200
     finally:
-        if conn.is_connected(): cursor.close(); conn.close()
+        if conn.is_connected(): conn.close()
 
 
 @app.route('/api/interview/<interview_id>/next-question', methods=['POST'])
-def process_candidate_response_and_get_next_question(interview_id):
+def process_candidate_response(interview_id):
     llm = get_llm()
     if not llm: return jsonify({"message": "AI service not available."}), 503
 
     data = request.json
-    if not data.get('response_text'): return jsonify({"message": "Candidate response missing"}), 400
+    if not data.get('response_text'): return jsonify({"message": "Response missing"}), 400
 
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
 
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT i.status, i.transcript_json, j.description as jd, c.name as candidate_name, c.resume_filename FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
+        query = "SELECT i.transcript_json, j.description as jd, c.name as candidate_name, c.resume_filename FROM interviews i JOIN jobs j ON i.job_id = j.id JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
         cursor.execute(query, (interview_id,))
         interview = cursor.fetchone()
 
-        if not interview: return jsonify({"message": "Interview not found"}), 404
-        if interview['status'] != 'In Progress':
-            return jsonify({"message": f"Interview not in progress. Status: {interview['status']}"}), 403
-
-        transcript_str = interview.get('transcript_json', '[]')
-        transcript = json.loads(transcript_str) if isinstance(transcript_str, str) else (transcript_str or [])
-
-        # Add candidate's response to transcript
+        transcript = json.loads(interview['transcript_json']) if isinstance(interview['transcript_json'], str) else \
+        interview['transcript_json'] or []
         transcript.append(
             {"actor": "candidate", "text": data['response_text'], "timestamp": datetime.datetime.utcnow().isoformat()})
 
-        resume_content = parse_resume_from_file(interview.get('resume_filename'))
-        candidate_name = interview.get('candidate_name', 'there')
-
-        # Build the complete conversation history for the AI
-        messages = build_interview_messages(interview['jd'], resume_content, candidate_name, transcript)
+        resume_summary = parse_resume_from_file(interview.get('resume_filename'))
+        messages = build_interview_messages(interview['jd'], resume_summary, interview['candidate_name'], transcript)
         ai_response = llm.invoke(messages)
         response_text = ai_response.content.strip()
 
-        new_status = 'In Progress'
         if "[INTERVIEW_COMPLETE]" in response_text:
-            next_question_text = response_text.replace("[INTERVIEW_COMPLETE]", "").strip()
-            new_status = 'Completed'  # Or 'Pending Review'
+            next_question = response_text.replace("[INTERVIEW_COMPLETE]", "").strip()
+            new_status = 'Completed'
+            transcript.append(
+                {"actor": "ai", "text": next_question, "timestamp": datetime.datetime.utcnow().isoformat()})
+            cursor.execute("UPDATE interviews SET transcript_json=%s, status=%s WHERE id=%s",
+                           (json.dumps(transcript), new_status, interview_id))
+            conn.commit()
+            # This is where the magic happens!
+            process_interview_results(interview_id)
         else:
-            next_question_text = response_text
+            next_question = response_text
+            new_status = 'In Progress'
+            transcript.append(
+                {"actor": "ai", "text": next_question, "timestamp": datetime.datetime.utcnow().isoformat()})
+            cursor.execute("UPDATE interviews SET transcript_json=%s WHERE id=%s",
+                           (json.dumps(transcript), interview_id))
+            conn.commit()
 
-        # Add AI's new question/response to transcript
-        transcript.append(
-            {"actor": "ai", "text": next_question_text, "timestamp": datetime.datetime.utcnow().isoformat()})
+        return jsonify({"question": {"text": next_question}, "interview_status": new_status}), 200
+    finally:
+        if conn.is_connected(): conn.close()
 
-        cursor.execute("UPDATE interviews SET status=%s, transcript_json=%s, updated_at=%s WHERE id=%s",
-                       (new_status, json.dumps(transcript), datetime.datetime.utcnow(), interview_id))
+
+@app.route('/api/interview/<interview_id>/screenshot', methods=['POST'])
+def save_screenshot(interview_id):
+    conn = get_db_connection()
+    if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    try:
+        data = request.json
+        if not data or 'image' not in data:
+            return jsonify({"message": "No image data provided"}), 400
+
+        # Decode the base64 image
+        image_data = data['image'].split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+
+        # Save the image
+        filename = f"{interview_id}_{uuid.uuid4()}.jpg"
+        filepath = os.path.join(app.config['SCREENSHOT_FOLDER'], filename)
+        with open(filepath, 'wb') as f:
+            f.write(image_bytes)
+
+        db_path = f"/uploads/screenshots/{filename}"
+
+        # Update the database
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT screenshot_paths_json FROM interviews WHERE id = %s", (interview_id,))
+        interview = cursor.fetchone()
+
+        if interview is None:
+            return jsonify({"message": "Interview not found"}), 404
+
+        paths = json.loads(interview['screenshot_paths_json']) if interview['screenshot_paths_json'] else []
+        paths.append(db_path)
+
+        cursor.execute("UPDATE interviews SET screenshot_paths_json = %s WHERE id = %s",
+                       (json.dumps(paths), interview_id))
         conn.commit()
 
-        return jsonify({"question": {"text": next_question_text}, "interview_status": new_status}), 200
+        return jsonify({"message": "Screenshot saved"}), 200
 
     except Exception as e:
+        app.logger.error(f"Error saving screenshot for interview {interview_id}: {e}\n{traceback.format_exc()}")
         if conn.is_connected(): conn.rollback()
-        return jsonify({"message": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"message": "Error saving screenshot"}), 500
     finally:
         if conn.is_connected(): cursor.close(); conn.close()
 
 
-# --- Text-to-Speech Endpoint ---
+# --- TTS Endpoint ---
 @app.route('/api/interview/text-to-speech', methods=['POST'])
 def text_to_speech():
-    if not openai_client: return jsonify({"message": "AI service (TTS) not available."}), 503
-    data = request.json
-    text_to_speak = data.get('text')
-    if not text_to_speak: return jsonify({"message": "No text provided for speech."}), 400
+    if not openai_client: return jsonify({"message": "TTS service not available."}), 503
+    text = request.json.get('text')
+    if not text: return jsonify({"message": "No text provided"}), 400
     try:
-        response = openai_client.audio.speech.create(model="tts-1", voice="alloy", input=text_to_speak,
-                                                     response_format="mp3")
-
-        def generate_audio_chunks():
-            for chunk in response.iter_bytes(chunk_size=4096):
-                yield chunk
-
-        return Response(generate_audio_chunks(), mimetype="audio/mpeg")
+        response = openai_client.audio.speech.create(model="tts-1", voice="alloy", input=text, response_format="mp3")
+        return Response(response.iter_bytes(chunk_size=4096), mimetype="audio/mpeg")
     except Exception as e:
-        print(f"OpenAI TTS API call failed: {e}")
-        return jsonify({"message": "Failed to generate audio from text."}), 500
+        app.logger.error(f"TTS API call failed: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "Failed to generate audio."}), 500
 
 
 # --- File Serving Endpoint ---
@@ -528,3 +603,4 @@ def serve_uploaded_file(folder, filename):
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
