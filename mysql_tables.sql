@@ -81,3 +81,12 @@ VALUES
 ('int_cand_test01', 'job_ce48a27f-202b-43ed-a8b8-dcb41afec7af', 'company_innovatech', 'your-unique-guid-for-link-12345', 'Invited', NOW(), NOW());
 -- Replace 'job_example_123' with an actual job_id from your jobs table
 -- Replace 'your-unique-guid-for-link-12345' with a unique GUID you create
+
+ALTER TABLE jobs
+ADD COLUMN number_of_questions INT DEFAULT 5,
+ADD COLUMN must_ask_topics TEXT NULL;
+
+
+ALTER TABLE interviews
+ADD COLUMN detailed_scorecard_json JSON NULL COMMENT 'Stores detailed scores for different categories' AFTER score;
+

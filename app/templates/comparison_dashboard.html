@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Candidate Comparison Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        .table-header-sortable {
+            cursor: pointer;
+            transition: color 0.2s ease-in-out;
+        }
+        .table-header-sortable:hover {
+            color: #4f46e5; /* indigo-600 */
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <header class="mb-6">
+            <a href="/admin_dashboard.html" class="text-indigo-600 hover:text-indigo-800 mb-4 inline-flex items-center">
+                <i class="fas fa-arrow-left mr-2"></i> Back to Dashboard
+            </a>
+            <h1 id="job-title-header" class="text-3xl font-bold text-gray-800">Candidate Comparison</h1>
+            <p class="text-gray-500 mt-1">Compare, sort, and filter interview results for this position.</p>
+        </header>
+
+        <div id="loading-indicator" class="text-center py-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+            <p class="text-lg text-gray-500 mt-4">Loading comparison data...</p>
+        </div>
+
+        <div id="error-view" class="hidden text-center py-10 bg-white p-6 rounded-xl shadow-md">
+            <i class="fas fa-exclamation-triangle text-red-500 fa-3x mb-4"></i>
+            <h2 class="text-2xl font-semibold text-red-700 mb-2">Error</h2>
+            <p id="error-message" class="text-gray-600">Could not load candidate data.</p>
+        </div>
+
+        <div id="comparison-container" class="hidden bg-white p-6 rounded-xl shadow-lg">
+             <div class="flex flex-col sm:flex-row justify-between items-center mb-4">
+                 <div class="relative">
+                    <input type="text" id="search-input" placeholder="Search candidates..." class="pl-10 pr-4 py-2 w-full sm:w-64 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-sm"/>
+                    <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                </div>
+                <div class="flex items-center space-x-2 mt-3 sm:mt-0">
+                    <span class="text-sm text-gray-600">Per page:</span>
+                    <select id="limit-select" class="border border-gray-300 rounded-lg text-sm p-1">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50" selected>50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b bg-gray-50">
+                            <th class="p-3 text-sm font-semibold text-gray-600">Candidate</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 table-header-sortable" data-sort="score">Score <i class="fas fa-sort ml-1"></i></th>
+                            <th class="p-3 text-sm font-semibold text-gray-600">AI Summary</th>
+                            <th class="p-3 text-sm font-semibold text-gray-600 table-header-sortable" data-sort="interview_date">Date <i class="fas fa-sort ml-1"></i></th>
+                            <th class="p-3 text-sm font-semibold text-gray-600"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="comparison-table-body">
+                        <!-- Table rows will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+             <div id="no-candidates-view" class="hidden text-center py-10">
+                <i class="fas fa-users-slash fa-3x text-gray-400 mb-4"></i>
+                <h2 class="text-xl font-semibold text-gray-700 mb-2">No Candidates Found</h2>
+                <p class="text-gray-500">No completed interviews match your criteria.</p>
+            </div>
+            <div id="pagination-controls" class="flex justify-between items-center pt-4 border-t mt-4">
+                 <!-- Pagination will be injected here -->
+            </div>
+        </div>
+
+    </div>
+
+<script>
+    const API_BASE_URL = 'http://localhost:5001/api/admin';
+
+    // State Management
+    const state = {
+        jobId: null,
+        interviews: [],
+        total: 0,
+        page: 1,
+        limit: 50,
+        sortBy: 'score',
+        sortOrder: 'desc',
+        searchQuery: ''
+    };
+
+    // DOM Elements
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const errorView = document.getElementById('error-view');
+    const errorMessageEl = document.getElementById('error-message');
+    const comparisonContainer = document.getElementById('comparison-container');
+    const tableBody = document.getElementById('comparison-table-body');
+    const jobTitleHeader = document.getElementById('job-title-header');
+    const noCandidatesView = document.getElementById('no-candidates-view');
+    const paginationControls = document.getElementById('pagination-controls');
+    const limitSelect = document.getElementById('limit-select');
+    const searchInput = document.getElementById('search-input');
+
+    function displayError(message) {
+        errorMessageEl.textContent = message;
+        loadingIndicator.classList.add('hidden');
+        comparisonContainer.classList.add('hidden');
+        errorView.classList.remove('hidden');
+    }
+
+    function renderTable() {
+        tableBody.innerHTML = '';
+        if (state.interviews.length === 0) {
+            noCandidatesView.classList.remove('hidden');
+            return;
+        }
+        noCandidatesView.classList.add('hidden');
+
+        state.interviews.forEach(candidate => {
+            const score = candidate.score || 0;
+            let scoreColorClass = 'text-green-600 bg-green-100';
+            if (score < 50) scoreColorClass = 'text-red-600 bg-red-100';
+            else if (score < 75) scoreColorClass = 'text-yellow-600 bg-yellow-100';
+
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-gray-50';
+            row.innerHTML = `
+                <td class="p-3">
+                    <p class="font-medium text-gray-800">${candidate.candidate_name || 'N/A'}</p>
+                    <p class="text-xs text-gray-500">${candidate.candidate_email || ''}</p>
+                </td>
+                <td class="p-3">
+                    <span class="px-3 py-1 text-sm font-bold rounded-full ${scoreColorClass}">${score}</span>
+                </td>
+                <td class="p-3">
+                    <p class="text-sm text-gray-600 truncate max-w-xs" title="${candidate.ai_summary || ''}">${candidate.ai_summary || 'N/A'}</p>
+                </td>
+                <td class="p-3 text-sm text-gray-500">${new Date(candidate.interview_date).toLocaleDateString()}</td>
+                <td class="p-3 text-right">
+                    <a href="#" onclick="viewFullInterview('${candidate.id}'); return false;" class="text-indigo-600 hover:underline text-sm font-medium">View Details</a>
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+
+    function renderPagination() {
+        const totalPages = Math.ceil(state.total / state.limit);
+        const startItem = (state.page - 1) * state.limit + 1;
+        const endItem = Math.min(startItem + state.limit - 1, state.total);
+
+        let html = `<p class="text-sm text-gray-600">Showing ${state.total > 0 ? startItem : 0} to ${endItem} of ${state.total} results</p>`;
+
+        if (totalPages > 1) {
+            html += `<div class="flex items-center space-x-2">`;
+            html += `<button onclick="changePage(${state.page - 1})" class="px-3 py-1 border rounded-md text-sm ${state.page === 1 ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}" ${state.page === 1 ? 'disabled' : ''}>Previous</button>`;
+            html += `<span class="text-sm text-gray-600">Page ${state.page} of ${totalPages}</span>`;
+            html += `<button onclick="changePage(${state.page + 1})" class="px-3 py-1 border rounded-md text-sm ${state.page === totalPages ? 'bg-gray-100 cursor-not-allowed' : 'bg-white hover:bg-gray-50'}" ${state.page === totalPages ? 'disabled' : ''}>Next</button>`;
+            html += `</div>`;
+        }
+        paginationControls.innerHTML = html;
+    }
+
+    function updateSortIcons() {
+        document.querySelectorAll('.table-header-sortable i').forEach(icon => {
+            icon.className = 'fas fa-sort text-gray-300 ml-1';
+        });
+        const activeSorter = document.querySelector(`.table-header-sortable[data-sort="${state.sortBy}"] i`);
+        if (activeSorter) {
+            activeSorter.className = state.sortOrder === 'asc' ? 'fas fa-sort-up ml-1' : 'fas fa-sort-down ml-1';
+            activeSorter.classList.remove('text-gray-300');
+        }
+    }
+
+    async function loadComparisonData() {
+        loadingIndicator.classList.remove('hidden');
+        comparisonContainer.classList.add('hidden');
+        errorView.classList.add('hidden');
+
+        const offset = (state.page - 1) * state.limit;
+        const url = `${API_BASE_URL}/interviews?job_id=${state.jobId}&limit=${state.limit}&offset=${offset}&sort_by=${state.sortBy}&sort_order=${state.sortOrder}&search=${state.searchQuery}`;
+
+        try {
+            const data = await fetch(url).then(res => res.json());
+            state.interviews = data.interviews;
+            state.total = data.total;
+
+            if (state.interviews.length > 0 && !jobTitleHeader.textContent.includes('"')) {
+                 jobTitleHeader.textContent = `Candidate Comparison for "${state.interviews[0].job_title}"`;
+            }
+            renderTable();
+            renderPagination();
+            updateSortIcons();
+            comparisonContainer.classList.remove('hidden');
+
+        } catch (error) {
+            console.error("Failed to load comparison data:", error);
+            displayError(error.message || "Could not fetch interview data.");
+        } finally {
+            loadingIndicator.classList.add('hidden');
+        }
+    }
+
+    function viewFullInterview(interviewId) {
+        window.location.href = `/admin_dashboard.html?interview=${interviewId}`;
+    }
+
+    function changePage(newPage) {
+        state.page = newPage;
+        loadComparisonData();
+    }
+
+    function handleSort(e) {
+        const newSortBy = e.currentTarget.dataset.sort;
+        if (state.sortBy === newSortBy) {
+            state.sortOrder = state.sortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+            state.sortBy = newSortBy;
+            state.sortOrder = 'desc';
+        }
+        state.page = 1;
+        loadComparisonData();
+    }
+
+    // --- Event Listeners ---
+    document.querySelectorAll('.table-header-sortable').forEach(header => {
+        header.addEventListener('click', handleSort);
+    });
+
+    limitSelect.addEventListener('change', (e) => {
+        state.limit = parseInt(e.target.value, 10);
+        state.page = 1;
+        loadComparisonData();
+    });
+
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            state.searchQuery = e.target.value;
+            state.page = 1;
+            loadComparisonData();
+        }, 500); // Debounce search
+    });
+
+    // --- Initial Load ---
+    window.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        state.jobId = urlParams.get('job_id');
+
+        if (state.jobId) {
+            loadComparisonData();
+        } else {
+            displayError("No Job ID provided. Please access this page from a specific job's detail view.");
+        }
+    });
+</script>
+</body>
+</html>
