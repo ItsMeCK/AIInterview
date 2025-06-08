@@ -150,7 +150,7 @@ def send_invites(job_id):
                 interview_link = f"http://localhost:5001/candidate_interview.html?invite={invitation_link_guid}"
                 msg = Message(
                     subject=f"Invitation to Interview for {job_info['title']}",
-                    sender='chandrakant7892@gmail.com',
+                    sender=current_app.config['MAIL_USERNAME'],
                     recipients=[email]
                 )
                 msg.body = f"Hello,\n\nYou have been invited to an AI-powered screening interview for the {job_info['title']} position.\n\nPlease use the following link to begin your interview:\n{interview_link}\n\nBest regards,\nThe Hiring Team"
@@ -273,12 +273,18 @@ def get_admin_interview_detail(interview_id):
         interview = cursor.fetchone()
         if not interview: return jsonify({"message": "Interview not found or access denied"}), 404
 
+        # This is the corrected section to parse and alias all JSON fields
         for key in ['transcript_json', 'ai_questions_json', 'screenshot_paths_json', 'detailed_scorecard_json']:
             if interview.get(key) and isinstance(interview[key], str):
                 try:
                     interview[key] = json.loads(interview[key])
                 except json.JSONDecodeError:
                     interview[key] = None
+
+        # Aliasing for easier frontend access
+        interview['transcript'] = interview.get('transcript_json')
+        interview['questions'] = interview.get('ai_questions_json')
+        interview['screenshots'] = interview.get('screenshot_paths_json') or []
 
         return jsonify(serialize_datetime_in_obj(interview)), 200
     except Exception as err:
