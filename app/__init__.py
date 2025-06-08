@@ -1,7 +1,18 @@
 from flask import Flask
 from flask_cors import CORS
+from flask_bcrypt import Bcrypt
+from flask_login import LoginManager
+from flask_mail import Mail
 from config import Config
 import os
+
+# Initialize extensions
+bcrypt = Bcrypt()
+login_manager = LoginManager()
+# When a user needs to log in, redirect them to the index page (which is our login page)
+login_manager.login_view = 'main_bp.index'
+login_manager.login_message_category = 'info'
+mail = Mail()
 
 
 def create_app(config_class=Config):
@@ -9,18 +20,23 @@ def create_app(config_class=Config):
     Creates and configures an instance of the Flask application.
     This is the application factory.
     """
-    app = Flask(__name__)
+    # The key fix: The path is relative to the 'app' package folder.
+    # '../templates' tells Flask to go up one level to find the templates directory.
+    app = Flask(__name__, instance_relative_config=True, template_folder='templates')
+
     app.config.from_object(config_class)
 
-    # Initialize CORS to allow requests from any origin
-    # For production, you might want to restrict this to your specific frontend domain
+    # Initialize extensions with the app instance
     CORS(app)
+    bcrypt.init_app(app)
+    login_manager.init_app(app)
+    mail.init_app(app)
 
-    # Ensure instance folder exists (for future use, e.g., SQLite DB)
-    try:
-        os.makedirs(app.instance_path)
-    except OSError:
-        pass
+    # User loader function for Flask-Login
+    from app.models import Admin
+    @login_manager.user_loader
+    def load_user(admin_id):
+        return Admin.get(admin_id)
 
     # Ensure upload folders exist based on the configuration
     for folder_key in ['UPLOAD_FOLDER', 'RESUME_FOLDER', 'SCREENSHOT_FOLDER']:
@@ -30,10 +46,12 @@ def create_app(config_class=Config):
             app.logger.info(f"Created directory: {folder_path}")
 
     # Import and register Blueprints
+    from app.routes.auth_routes import auth_bp
     from app.routes.admin_routes import admin_bp
     from app.routes.interview_routes import interview_bp
     from app.routes.main_routes import main_bp
 
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
     app.register_blueprint(interview_bp, url_prefix='/api/interview')
     app.register_blueprint(main_bp)

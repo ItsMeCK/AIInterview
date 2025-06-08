@@ -1,13 +1,13 @@
 from flask import Blueprint, jsonify, request, Response
-from app.services.db_services import get_db_connection, parse_resume_from_file
+from app.services.db_services import get_db_connection, generate_id, parse_resume_from_file
 from app.services.ai_services import get_llm, build_interview_messages, process_interview_results, get_openai_client
 import datetime
 import os
 import json
 import base64
 import traceback
-import uuid
 from flask import current_app
+import uuid
 
 interview_bp = Blueprint('interview_bp', __name__)
 
@@ -18,12 +18,14 @@ def get_interview_by_link(invitation_link_guid):
     if not conn: return jsonify({"message": "Database connection failed"}), 500
     try:
         cursor = conn.cursor(dictionary=True)
+        # Fetch company_id as well to display company-specific branding if needed
         query = "SELECT i.id as interview_id, i.status as interview_status, j.title as job_title, j.company_id FROM interviews i JOIN jobs j ON i.job_id = j.id WHERE i.invitation_link = %s"
         cursor.execute(query, (invitation_link_guid,))
         data = cursor.fetchone()
         if not data: return jsonify({"message": "Invalid invitation link"}), 404
 
-        # In a real multi-tenant app, you'd get company name from a companies table
+        # In a real multi-tenant app, you'd fetch the company name from the companies table
+        # For now, we can use a placeholder or assume a single company for the demo
         data['company_name'] = "Innovatech"  # Placeholder
         return jsonify(data), 200
     except Exception as e:
@@ -46,7 +48,7 @@ def submit_candidate_details_and_resume(interview_id):
         resume_file.save(resume_save_path)
         resume_filepath_db = f"/uploads/resumes/{secure_name}"
 
-        candidate_id = str(uuid.uuid4())
+        candidate_id = generate_id("cand_")
         now_utc = datetime.datetime.utcnow()
 
         cursor.execute(

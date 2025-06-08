@@ -156,6 +156,27 @@
             </form>
         </div>
     </div>
+    <div id="send-invites-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-gray-800">Send Interview Invites</h3>
+                <button onclick="closeSendInvitesModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <form id="send-invites-form">
+                <input type="hidden" id="invite-job-id">
+                <div>
+                    <label for="invite-emails" class="block text-sm font-medium text-gray-700">Candidate Emails</label>
+                    <textarea id="invite-emails" name="emails" rows="5" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Enter comma-separated email addresses..."></textarea>
+                    <p class="mt-1 text-xs text-gray-500">Separate multiple emails with a comma.</p>
+                </div>
+                <div id="send-invites-error" class="text-red-500 text-sm hidden mt-2"></div>
+                <div class="flex justify-end space-x-3 pt-4">
+                    <button type="button" onclick="closeSendInvitesModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors">Send Invites</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <div id="interview-feedback-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-40">
        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
             <div class="flex justify-between items-center mb-4">
@@ -182,8 +203,8 @@
     </div>
 
 <script>
-    const API_BASE_URL = 'http://localhost:5001/api/admin';
-    const FILE_SERVER_BASE_URL = 'http://localhost:5001';
+    const API_BASE_URL = '/api/admin'; // Use relative URL for modular app
+    const FILE_SERVER_BASE_URL = ''; // Use relative URL
 
     // --- State Management ---
     let currentView = { type: 'dashboard' };
@@ -197,8 +218,6 @@
     const jobDetailsSection = document.getElementById('job-details-section');
     const interviewDetailsSection = document.getElementById('interview-details-section');
     const contentSections = document.querySelectorAll('.content-section');
-    const jobFormModal = document.getElementById('job-form-modal');
-    const jobForm = document.getElementById('job-form');
 
     // --- Utility Functions ---
     function showLoading() { loadingIndicator.classList.remove('hidden'); }
@@ -213,6 +232,9 @@
         try {
             const response = await fetch(url, options);
             if (!response.ok) {
+                if(response.status === 401) { // Unauthorized
+                    window.location.href = '/';
+                }
                 const errorData = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
                 throw new Error(errorData.message || `HTTP error ${response.status}`);
             }
@@ -308,7 +330,7 @@
             <tr class="border-b hover:bg-gray-50">
                 <td class="p-3 font-medium">${interview.candidate_name || 'N/A'}</td>
                 <td class="p-3 hidden md:table-cell">${interview.job_title}</td>
-                <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${interview.status === 'Pending Review' ? 'bg-yellow-100 text-yellow-700' : interview.status === 'Reviewed' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}">${interview.status}</span></td>
+                <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${interview.status === 'Pending Review' ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">${interview.status}</span></td>
                 <td class="p-3 font-medium">${interview.score || 'N/A'}</td>
                 <td class="p-3"><button onclick="loadInterviewDetails('${interview.id}')" class="text-indigo-600 hover:underline">View Details</button></td>
             </tr>`;
@@ -322,8 +344,8 @@
             <p class="text-gray-600 mb-4">Department: ${job.department}</p>
             <div class="flex flex-wrap gap-2 mb-6">
                  <button onclick="openEditJobModal('${job.id}')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 flex items-center text-sm"><i class="fas fa-edit mr-2"></i> Edit Job</button>
-                 <button onclick="alert('Send Invites for Job ID: ${job.id} - Not implemented')" class="bg-sky-500 text-white px-4 py-2 rounded-lg hover:bg-sky-600 flex items-center text-sm"><i class="fas fa-paper-plane mr-2"></i> Send Invites</button>
-                 <button onclick="window.location.href='/comparison_dashboard.html?job_id=${job.id}'" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 flex items-center text-sm"><i class="fas fa-users mr-2"></i> Compare Candidates</button>
+                 <button onclick="openSendInvitesModal('${job.id}')" class="bg-sky-500 text-white px-4 py-2 rounded-lg hover:bg-sky-600 flex items-center text-sm"><i class="fas fa-paper-plane mr-2"></i> Send Invites</button>
+                 <button onclick="window.location.href='/comparison_dashboard?job_id=${job.id}'" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 flex items-center text-sm"><i class="fas fa-users mr-2"></i> Compare Candidates</button>
             </div>
             <h3 class="text-xl font-semibold text-gray-800 mb-4">Interviews for this Job (${interviewsForJob.length})</h3>
             <div id="job-interviews-container"></div>
@@ -515,6 +537,15 @@
     }
 
     function closeJobFormModal() { document.getElementById('job-form-modal').classList.remove('active'); }
+    function openSendInvitesModal(jobId) {
+        document.getElementById('invite-job-id').value = jobId;
+        document.getElementById('send-invites-form').reset();
+        document.getElementById('send-invites-error').classList.add('hidden');
+        document.getElementById('send-invites-modal').classList.add('active');
+    }
+    function closeSendInvitesModal() {
+        document.getElementById('send-invites-modal').classList.remove('active');
+    }
     function openFeedbackModal() { document.getElementById('interview-feedback-modal').classList.add('active'); }
     function closeFeedbackModal() { document.getElementById('interview-feedback-modal').classList.remove('active'); }
 
@@ -636,6 +667,36 @@
             } catch (error) {
                 jobFormError.textContent = error.message || "Failed to save job.";
                 jobFormError.classList.remove('hidden');
+            }
+        });
+
+        const sendInvitesForm = document.getElementById('send-invites-form');
+        sendInvitesForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errorEl = document.getElementById('send-invites-error');
+            errorEl.classList.add('hidden');
+
+            const jobId = document.getElementById('invite-job-id').value;
+            const emails = document.getElementById('invite-emails').value;
+
+            if (!emails) {
+                errorEl.textContent = 'Please enter at least one email address.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            try {
+                const result = await fetchData(`${API_BASE_URL}/jobs/${jobId}/send-invites`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ emails: emails })
+                });
+                alert(result.message);
+                closeSendInvitesModal();
+                loadJobDetails(jobId);
+            } catch (error) {
+                errorEl.textContent = error.message || "Failed to send invites.";
+                errorEl.classList.remove('hidden');
             }
         });
     });

@@ -1,26 +1,29 @@
 from flask import Blueprint, jsonify, request
+from flask_login import login_required, current_user
 from app.services.db_services import get_db_connection, serialize_datetime_in_obj, generate_id
 from flask import current_app
+from app import mail
+from flask_mail import Message
 import datetime
 import traceback
 import json
+import uuid
 
 admin_bp = Blueprint('admin_bp', __name__)
 
 
 @admin_bp.route('/jobs', methods=['GET', 'POST'])
+@login_required
 def manage_jobs():
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
 
-    # In a real app, these would come from an authentication system
-    placeholder_company_id = "company_innovatech"
-    placeholder_admin_user_id = "admin_user_123"
+    company_id = current_user.company_id
 
     try:
         cursor = conn.cursor(dictionary=True)
         if request.method == 'GET':
-            cursor.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+            cursor.execute("SELECT * FROM jobs WHERE company_id = %s ORDER BY created_at DESC", (company_id,))
             return jsonify(serialize_datetime_in_obj(cursor.fetchall())), 200
 
         if request.method == 'POST':
@@ -36,7 +39,7 @@ def manage_jobs():
             cursor.execute(query, (
                 new_job_id, data['title'], data['department'], data['description'],
                 data.get('status', 'Open'), datetime.datetime.utcnow(),
-                placeholder_admin_user_id, placeholder_company_id,
+                current_user.id, company_id,
                 data.get('number_of_questions', 5), data.get('must_ask_topics')
             ))
             conn.commit()
@@ -55,14 +58,18 @@ def manage_jobs():
 
 
 @admin_bp.route('/jobs/<job_id>', methods=['GET', 'PUT', 'DELETE'])
+@login_required
 def manage_job_detail(job_id):
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    company_id = current_user.company_id
+
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM jobs WHERE id = %s", (job_id,))
+        cursor.execute("SELECT * FROM jobs WHERE id = %s AND company_id = %s", (job_id, company_id))
         job = cursor.fetchone()
-        if not job: return jsonify({"message": "Job not found"}), 404
+        if not job: return jsonify({"message": "Job not found or access denied"}), 404
 
         if request.method == 'GET':
             return jsonify(serialize_datetime_in_obj(job)), 200
@@ -84,7 +91,8 @@ def manage_job_detail(job_id):
 
             values.append(datetime.datetime.utcnow())
             values.append(job_id)
-            query = f"UPDATE jobs SET {', '.join(fields_to_update)}, updated_at = %s WHERE id = %s"
+            values.append(company_id)
+            query = f"UPDATE jobs SET {', '.join(fields_to_update)}, updated_at = %s WHERE id = %s AND company_id = %s"
             cursor.execute(query, tuple(values));
             conn.commit()
 
@@ -92,9 +100,9 @@ def manage_job_detail(job_id):
             return jsonify(serialize_datetime_in_obj(cursor.fetchone())), 200
 
         if request.method == 'DELETE':
-            cursor.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
+            cursor.execute("DELETE FROM jobs WHERE id = %s AND company_id = %s", (job_id, company_id))
             conn.commit()
-            if cursor.rowcount == 0: return jsonify({"message": "Job not found"}), 404
+            if cursor.rowcount == 0: return jsonify({"message": "Job not found or access denied"}), 404
             return jsonify({"message": "Job deleted successfully"}), 200
 
     except Exception as err:
@@ -107,11 +115,76 @@ def manage_job_detail(job_id):
             conn.close()
 
 
+@admin_bp.route('/jobs/<job_id>/send-invites', methods=['POST'])
+@login_required
+def send_invites(job_id):
+    data = request.json
+    emails = [email.strip() for email in data.get('emails', '').split(',') if email.strip()]
+    if not emails:
+        return jsonify({"message": "No valid email addresses provided"}), 400
+
+    conn = get_db_connection()
+    if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    company_id = current_user.company_id
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT title FROM jobs WHERE id = %s AND company_id = %s", (job_id, company_id))
+        job_info = cursor.fetchone()
+        if not job_info:
+            return jsonify({"message": "Job not found or access denied"}), 404
+
+        sent_count = 0
+        failed_emails = []
+        for email in emails:
+            try:
+                interview_id = generate_id("int_")
+                invitation_link_guid = str(uuid.uuid4())
+
+                cursor.execute(
+                    "INSERT INTO interviews (id, job_id, company_id, invitation_link, status) VALUES (%s, %s, %s, %s, %s)",
+                    (interview_id, job_id, company_id, invitation_link_guid, 'Invited')
+                )
+
+                interview_link = f"http://localhost:5001/candidate_interview.html?invite={invitation_link_guid}"
+                msg = Message(
+                    subject=f"Invitation to Interview for {job_info['title']}",
+                    sender=current_app.config['MAIL_USERNAME'],
+                    recipients=[email]
+                )
+                msg.body = f"Hello,\n\nYou have been invited to an AI-powered screening interview for the {job_info['title']} position.\n\nPlease use the following link to begin your interview:\n{interview_link}\n\nBest regards,\nThe Hiring Team"
+                mail.send(msg)
+                sent_count += 1
+            except Exception as e:
+                current_app.logger.error(f"Failed to send invite to {email} for job {job_id}: {e}")
+                failed_emails.append(email)
+
+        conn.commit()
+
+        message = f"Successfully sent {sent_count} invites."
+        if failed_emails:
+            message += f" Failed to send to: {', '.join(failed_emails)}."
+
+        return jsonify({"message": message}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error sending invites for job {job_id}: {e}\n{traceback.format_exc()}")
+        if conn.is_connected(): conn.rollback()
+        return jsonify({"message": "An unexpected error occurred"}), 500
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+
 @admin_bp.route('/interviews', methods=['GET'])
+@login_required
 def get_admin_interviews():
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
 
+    company_id = current_user.company_id
     job_id_filter = request.args.get('job_id')
     status_filter = request.args.get('status')
     limit = request.args.get('limit', type=int)
@@ -121,16 +194,14 @@ def get_admin_interviews():
     search_query = request.args.get('search', '')
 
     allowed_sort_columns = ['score', 'interview_date', 'status']
-    if sort_by not in allowed_sort_columns:
-        sort_by = 'score'
-    if sort_order.lower() not in ['asc', 'desc']:
-        sort_order = 'desc'
+    if sort_by not in allowed_sort_columns: sort_by = 'score'
+    if sort_order.lower() not in ['asc', 'desc']: sort_order = 'desc'
 
     try:
         cursor = conn.cursor(dictionary=True)
         base_query = "FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id"
-        conditions = []
-        params = []
+        conditions = ["i.company_id = %s"]
+        params = [company_id]
 
         if job_id_filter:
             conditions.append("i.job_id = %s")
@@ -142,9 +213,7 @@ def get_admin_interviews():
             conditions.append("c.name LIKE %s")
             params.append(f"%{search_query}%")
 
-        where_clause = ""
-        if conditions:
-            where_clause = " WHERE " + " AND ".join(conditions)
+        where_clause = " WHERE " + " AND ".join(conditions)
 
         is_paginated_request = limit is not None and offset is not None
 
@@ -190,28 +259,26 @@ def get_admin_interviews():
 
 
 @admin_bp.route('/interviews/<interview_id>', methods=['GET'])
+@login_required
 def get_admin_interview_detail(interview_id):
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    company_id = current_user.company_id
+
     try:
         cursor = conn.cursor(dictionary=True)
-        query = "SELECT i.*, j.title as job_title, j.department as job_department, c.name as candidate_name, c.email as candidate_email FROM interviews i LEFT JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s"
-        cursor.execute(query, (interview_id,))
+        query = "SELECT i.*, j.title as job_title, j.department as job_department, c.name as candidate_name, c.email as candidate_email FROM interviews i JOIN jobs j ON i.job_id = j.id LEFT JOIN candidates c ON i.candidate_id = c.id WHERE i.id = %s AND i.company_id = %s"
+        cursor.execute(query, (interview_id, company_id))
         interview = cursor.fetchone()
-        if not interview: return jsonify({"message": "Interview not found"}), 404
+        if not interview: return jsonify({"message": "Interview not found or access denied"}), 404
 
-        # This is the corrected section to parse all JSON fields
         for key in ['transcript_json', 'ai_questions_json', 'screenshot_paths_json', 'detailed_scorecard_json']:
             if interview.get(key) and isinstance(interview[key], str):
                 try:
                     interview[key] = json.loads(interview[key])
                 except json.JSONDecodeError:
                     interview[key] = None
-
-        # For easier frontend access, we can alias these
-        interview['transcript'] = interview.get('transcript_json')
-        interview['questions'] = interview.get('ai_questions_json')
-        interview['screenshots'] = interview.get('screenshot_paths_json') or []
 
         return jsonify(serialize_datetime_in_obj(interview)), 200
     except Exception as err:
@@ -225,14 +292,18 @@ def get_admin_interview_detail(interview_id):
 
 
 @admin_bp.route('/interviews/<interview_id>/score', methods=['POST'])
+@login_required
 def score_interview(interview_id):
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    company_id = current_user.company_id
     data = request.json
+
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id FROM interviews WHERE id = %s", (interview_id,))
-        if not cursor.fetchone(): return jsonify({"message": "Interview not found"}), 404
+        cursor.execute("SELECT id FROM interviews WHERE id = %s AND company_id = %s", (interview_id, company_id))
+        if not cursor.fetchone(): return jsonify({"message": "Interview not found or access denied"}), 404
 
         update_fields = ["status = %s", "updated_at = %s"]
         params = ["Reviewed", datetime.datetime.utcnow()]
@@ -265,19 +336,26 @@ def score_interview(interview_id):
 
 
 @admin_bp.route('/dashboard-summary', methods=['GET'])
+@login_required
 def get_dashboard_summary():
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
+
+    company_id = current_user.company_id
+
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT COUNT(*) as count FROM jobs WHERE status = 'Open'")
+        cursor.execute("SELECT COUNT(*) as count FROM jobs WHERE status = 'Open' AND company_id = %s", (company_id,))
         open_jobs = cursor.fetchone()['count']
-        cursor.execute("SELECT COUNT(*) as total_apps FROM interviews")
+        cursor.execute("SELECT COUNT(*) as total_apps FROM interviews WHERE company_id = %s", (company_id,))
         total_applications = cursor.fetchone()['total_apps']
-        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Scheduled'")
+        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Scheduled' AND company_id = %s",
+                       (company_id,))
         interviews_scheduled = cursor.fetchone()['count']
-        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Pending Review'")
+        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Pending Review' AND company_id = %s",
+                       (company_id,))
         pending_reviews = cursor.fetchone()['count']
+
         return jsonify({"open_positions": open_jobs, "total_applications": total_applications,
                         "interviews_scheduled": interviews_scheduled, "pending_reviews": pending_reviews}), 200
     except Exception as err:
