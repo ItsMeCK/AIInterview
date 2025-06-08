@@ -150,7 +150,7 @@ def send_invites(job_id):
                 interview_link = f"http://localhost:5001/candidate_interview.html?invite={invitation_link_guid}"
                 msg = Message(
                     subject=f"Invitation to Interview for {job_info['title']}",
-                    sender=current_app.config['MAIL_USERNAME'],
+                    sender='chandrakant7892@gmail.com',
                     recipients=[email]
                 )
                 msg.body = f"Hello,\n\nYou have been invited to an AI-powered screening interview for the {job_info['title']} position.\n\nPlease use the following link to begin your interview:\n{interview_link}\n\nBest regards,\nThe Hiring Team"
