@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Portal - Admin</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        .modal { display: none; }
+        .modal.active { display: flex; }
+        .sidebar-icon { min-width: 20px; }
+        .content-section { display: none; }
+        .content-section.active { display: block; }
+        .nav-item.active-nav {
+            background-color: #4338ca; /* A darker indigo */
+            color: white;
+            font-weight: 600;
+        }
+        .tab-button.active-nav {
+            border-bottom: 2px solid #4f46e5;
+            color: #4f46e5;
+            font-weight: 600;
+        }
+        @media (max-width: 768px) {
+            .sidebar { transition: transform 0.3s ease-in-out; transform: translateX(-100%); }
+            .sidebar.open { transform: translateX(0); }
+            .main-content { margin-left: 0 !important; }
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside id="sidebar" class="sidebar fixed inset-y-0 left-0 z-30 w-64 bg-indigo-800 text-white p-4 transition-all duration-300 ease-in-out md:relative md:translate-x-0 flex flex-col">
+            <div class="flex items-center justify-between mb-6 h-12">
+                <span id="sidebar-title" class="text-xl font-semibold">AI Portal</span>
+                <button id="sidebar-toggle-desktop" class="p-2 rounded-md hover:bg-indigo-700 focus:outline-none hidden md:block">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button id="sidebar-close-mobile" class="p-2 rounded-md hover:bg-indigo-700 focus:outline-none md:hidden">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <nav class="flex-grow space-y-2">
+                <a href="#" id="nav-dashboard" class="nav-item flex items-center p-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                    <i class="fas fa-chart-bar sidebar-icon w-5 text-center"></i><span class="ml-3 item-text">Dashboard</span>
+                </a>
+                <a href="#" id="nav-jobs" class="nav-item flex items-center p-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                    <i class="fas fa-briefcase sidebar-icon w-5 text-center"></i><span class="ml-3 item-text">Job Postings</span>
+                </a>
+                <a href="#" id="nav-interviews" class="nav-item flex items-center p-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                    <i class="fas fa-calendar-alt sidebar-icon w-5 text-center"></i><span class="ml-3 item-text">Interviews</span>
+                </a>
+            </nav>
+            <div class="mt-auto">
+                <div id="user-info" class="p-2 text-xs text-indigo-300 item-text truncate">User: admin_demo_user</div>
+                <a href="#" class="nav-item flex items-center p-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                    <i class="fas fa-cog sidebar-icon w-5 text-center"></i><span class="ml-3 item-text">Settings</span>
+                </a>
+                <a href="#" id="logout-button" class="nav-item flex items-center p-3 rounded-lg hover:bg-indigo-700 transition-colors">
+                    <i class="fas fa-sign-out-alt sidebar-icon w-5 text-center"></i><span class="ml-3 item-text">Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content" class="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto transition-all duration-300 ease-in-out md:ml-64">
+            <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 sm:mb-8">
+                <div class="flex items-center">
+                    <button id="sidebar-open-mobile" class="p-2 mr-2 rounded-md hover:bg-gray-200 focus:outline-none md:hidden">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div>
+                        <h1 id="view-title" class="text-2xl sm:text-3xl font-bold text-gray-800">Admin Dashboard</h1>
+                        <p class="text-gray-500 text-sm">Welcome back, Admin!</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-2 sm:space-x-4 mt-3 sm:mt-0 w-full sm:w-auto">
+                    <div class="relative flex-grow sm:flex-grow-0">
+                        <input type="text" placeholder="Search..." class="pl-10 pr-4 py-2 w-full sm:w-64 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-sm"/>
+                        <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                    </div>
+                </div>
+            </header>
+
+            <div id="global-error-message" class="hidden bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-4" role="alert">
+                <strong class="font-bold">Error: </strong>
+                <span class="block sm:inline" id="global-error-text"></span>
+                <button class="absolute top-0 bottom-0 right-0 px-4 py-3" onclick="document.getElementById('global-error-message').classList.add('hidden')">
+                    <span class="text-xl">&times;</span>
+                </button>
+            </div>
+
+            <div id="loading-indicator" class="text-center py-10 hidden"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div><p class="text-lg text-gray-500 mt-4">Loading data...</p></div>
+
+            <section id="dashboard-overview-section" class="content-section active"></section>
+            <section id="job-details-section" class="content-section bg-white p-4 sm:p-6 rounded-xl shadow-lg"></section>
+            <section id="interview-details-section" class="content-section bg-white p-4 sm:p-6 rounded-xl shadow-lg"></section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="job-form-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-40">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="job-modal-title" class="text-xl font-semibold text-gray-800">Add New Job</h3>
+                <button onclick="closeJobFormModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <form id="job-form" class="space-y-4">
+                <input type="hidden" id="job-id-input">
+                <div>
+                    <label for="jobTitle" class="block text-sm font-medium text-gray-700">Job Title</label>
+                    <input type="text" id="jobTitle" name="title" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="department" class="block text-sm font-medium text-gray-700">Department</label>
+                    <input type="text" id="department" name="department" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                </div>
+                <div>
+                    <label for="jobDescription" class="block text-sm font-medium text-gray-700">Job Description</label>
+                    <textarea id="jobDescription" name="description" rows="5" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                </div>
+                 <div>
+                    <label for="must_ask_topics" class="block text-sm font-medium text-gray-700">Must-Ask Topics (comma-separated)</label>
+                    <input type="text" id="must_ask_topics" name="must_ask_topics" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="e.g., LangGraph, Parallel Processing">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="number_of_questions" class="block text-sm font-medium text-gray-700">Number of Questions</label>
+                        <input type="number" id="number_of_questions" name="number_of_questions" value="5" min="3" max="10" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="jobStatus" class="block text-sm font-medium text-gray-700">Status</label>
+                        <select id="jobStatus" name="status" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <option value="Open">Open</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Draft">Draft</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="job-form-error" class="text-red-500 text-sm hidden"></div>
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" onclick="closeJobFormModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors">Save Job</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div id="interview-feedback-modal" class="modal fixed inset-0 bg-black bg-opacity-50 items-center justify-center p-4 z-40">
+       <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-gray-800">Score & Feedback</h3>
+                <button onclick="closeFeedbackModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+            </div>
+            <form id="feedback-form" class="space-y-4">
+                <input type="hidden" id="feedback-interview-id">
+                <div>
+                    <label for="interviewScore" class="block text-sm font-medium text-gray-700">Overall Score (0-100)</label>
+                    <input type="number" id="interviewScore" name="score" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Enter score (optional)">
+                </div>
+                <div>
+                    <label for="adminFeedback" class="block text-sm font-medium text-gray-700">Admin Feedback/Notes</label>
+                    <textarea id="adminFeedback" name="feedback" rows="4" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" placeholder="Enter your feedback..."></textarea>
+                </div>
+                <div id="feedback-form-error" class="text-red-500 text-sm hidden"></div>
+                <div class="flex justify-end space-x-3 pt-2">
+                    <button type="button" onclick="closeFeedbackModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 transition-colors">Cancel</button>
+                    <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 transition-colors">Save Feedback</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+<script>
+    const API_BASE_URL = 'https://interview.aiagentictool.tech/api/admin';
+    const FILE_SERVER_BASE_URL = 'https://interview.aiagentictool.tech';
+
+    // --- State Management ---
+    let currentView = { type: 'dashboard' };
+
+    // --- DOM Elements ---
+    const viewTitle = document.getElementById('view-title');
+    const globalErrorMesssage = document.getElementById('global-error-message');
+    const globalErrorText = document.getElementById('global-error-text');
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const dashboardSection = document.getElementById('dashboard-overview-section');
+    const jobDetailsSection = document.getElementById('job-details-section');
+    const interviewDetailsSection = document.getElementById('interview-details-section');
+    const contentSections = document.querySelectorAll('.content-section');
+    const jobFormModal = document.getElementById('job-form-modal');
+    const jobForm = document.getElementById('job-form');
+
+    // --- Utility Functions ---
+    function showLoading() { loadingIndicator.classList.remove('hidden'); }
+    function hideLoading() { loadingIndicator.classList.add('hidden'); }
+    function displayError(message) {
+        globalErrorText.textContent = message;
+        globalErrorMesssage.classList.remove('hidden');
+    }
+
+    async function fetchData(url, options = {}) {
+        showLoading();
+        try {
+            const response = await fetch(url, options);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                throw new Error(errorData.message || `HTTP error ${response.status}`);
+            }
+            return await response.json();
+        } catch (err) {
+            displayError(err.message);
+            throw err;
+        } finally {
+            hideLoading();
+        }
+    }
+
+    function navigateToSection(sectionId, title) {
+        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active-nav'));
+        const navId = sectionId.startsWith('job') ? 'nav-jobs' : (sectionId.startsWith('interview') ? 'nav-interviews' : 'nav-dashboard');
+        document.getElementById(navId)?.classList.add('active-nav');
+
+        contentSections.forEach(sec => sec.classList.remove('active'));
+        const sectionEl = document.getElementById(sectionId);
+        if(sectionEl) sectionEl.classList.add('active');
+        viewTitle.textContent = title;
+    }
+
+    // --- Rendering Functions ---
+    function renderDashboard(summary, jobs, interviews) {
+        dashboardSection.innerHTML = `
+            <div id="stats-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"></div>
+            <div id="job-list-dashboard-container" class="bg-white p-4 sm:p-6 rounded-xl shadow-lg mb-8"></div>
+            <div id="interview-list-dashboard-container" class="bg-white p-4 sm:p-6 rounded-xl shadow-lg"></div>
+        `;
+        renderDashboardSummary(summary, document.getElementById('stats-cards-container'));
+        renderJobList(jobs, document.getElementById('job-list-dashboard-container'));
+        renderInterviewList(interviews.slice(0, 5), document.getElementById('interview-list-dashboard-container'));
+    }
+
+    function renderDashboardSummary(summary, containerElement) {
+        if (!summary) {
+            containerElement.innerHTML = '<p class="text-gray-500 col-span-full">Could not load summary data.</p>';
+            return;
+        }
+        containerElement.innerHTML = `
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-indigo-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Open Positions</p>
+                <p class="text-3xl font-bold text-gray-800">${summary.open_positions || 0}</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-green-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Total Applications</p>
+                <p class="text-3xl font-bold text-gray-800">${summary.total_applications || 0}</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-amber-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Interviews Scheduled</p>
+                <p class="text-3xl font-bold text-gray-800">${summary.interviews_scheduled || 0}</p>
+            </div>
+            <div class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-sky-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Pending Reviews</p>
+                <p class="text-3xl font-bold text-gray-800">${summary.pending_reviews || 0}</p>
+            </div>
+        `;
+    }
+
+    function createTableHTML(headers, rowsData, rowRenderer) {
+        let tableHTML = `<div class="overflow-x-auto"><table class="w-full text-left"><thead><tr class="border-b bg-gray-50">`;
+        headers.forEach(header => tableHTML += `<th class="p-3 text-sm font-semibold text-gray-600 ${header.className || ''}">${header.label}</th>`);
+        tableHTML += `</tr></thead><tbody>`;
+        if (rowsData.length === 0) {
+            tableHTML += `<tr><td colspan="${headers.length}" class="p-3 text-center text-gray-500">No data available.</td></tr>`;
+        } else {
+            rowsData.forEach(item => tableHTML += rowRenderer(item));
+        }
+        tableHTML += `</tbody></table></div>`;
+        return tableHTML;
+    }
+
+    function renderJobList(jobs, containerElement) {
+        const headers = [ { label: "Title" }, { label: "Department", className: "hidden md:table-cell" }, { label: "Status" }, { label: "Actions" } ];
+        const rowRenderer = (job) => `
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3 font-medium">${job.title}</td>
+                <td class="p-3 hidden md:table-cell">${job.department}</td>
+                <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${job.status === 'Open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${job.status}</span></td>
+                <td class="p-3 flex space-x-2">
+                    <button onclick="loadJobDetails('${job.id}')" title="View Job" class="p-1 sm:p-2 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-100 rounded-md"><i class="fas fa-eye"></i></button>
+                    <button onclick="openEditJobModal('${job.id}')" title="Edit Job" class="p-1 sm:p-2 text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100 rounded-md"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteJob('${job.id}')" title="Delete Job" class="p-1 sm:p-2 text-red-600 hover:text-red-800 hover:bg-red-100 rounded-md"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`;
+        containerElement.innerHTML = `<div class="flex justify-between items-center mb-4"><h2 class="text-xl font-semibold text-gray-800">Job Postings</h2><button onclick="openAddJobModal()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center text-sm"><i class="fas fa-plus-circle mr-2"></i> Add New Job</button></div>` + createTableHTML(headers, jobs, rowRenderer);
+    }
+
+    function renderInterviewList(interviews, containerElement) {
+        const headers = [ { label: "Candidate" }, { label: "Job Title", className: "hidden md:table-cell" }, { label: "Status" }, { label: "Score" }, { label: "Actions" } ];
+        const rowRenderer = (interview) => `
+            <tr class="border-b hover:bg-gray-50">
+                <td class="p-3 font-medium">${interview.candidate_name || 'N/A'}</td>
+                <td class="p-3 hidden md:table-cell">${interview.job_title}</td>
+                <td class="p-3"><span class="px-2 py-1 text-xs font-semibold rounded-full ${interview.status === 'Pending Review' ? 'bg-yellow-100 text-yellow-700' : interview.status === 'Reviewed' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}">${interview.status}</span></td>
+                <td class="p-3 font-medium">${interview.score || 'N/A'}</td>
+                <td class="p-3"><button onclick="loadInterviewDetails('${interview.id}')" class="text-indigo-600 hover:underline">View Details</button></td>
+            </tr>`;
+        containerElement.innerHTML = `<h2 class="text-xl font-semibold text-gray-800 mb-4">Recent Interviews</h2>` + createTableHTML(headers, interviews, rowRenderer);
+    }
+
+    function renderJobDetails(job, interviewsForJob) {
+        jobDetailsSection.innerHTML = `
+            <button onclick="loadDashboard()" class="mb-4 text-indigo-600 hover:text-indigo-800 flex items-center text-sm"><i class="fas fa-arrow-left mr-2"></i> Back to Dashboard</button>
+            <h2 class="text-2xl font-bold text-gray-800 mb-2">${job.title}</h2>
+            <p class="text-gray-600 mb-4">Department: ${job.department}</p>
+            <div class="flex flex-wrap gap-2 mb-6">
+                 <button onclick="openEditJobModal('${job.id}')" class="bg-yellow-500 text-white px-4 py-2 rounded-lg hover:bg-yellow-600 flex items-center text-sm"><i class="fas fa-edit mr-2"></i> Edit Job</button>
+                 <button onclick="alert('Send Invites for Job ID: ${job.id} - Not implemented')" class="bg-sky-500 text-white px-4 py-2 rounded-lg hover:bg-sky-600 flex items-center text-sm"><i class="fas fa-paper-plane mr-2"></i> Send Invites</button>
+                 <button onclick="window.location.href='/comparison_dashboard.html?job_id=${job.id}'" class="bg-teal-500 text-white px-4 py-2 rounded-lg hover:bg-teal-600 flex items-center text-sm"><i class="fas fa-users mr-2"></i> Compare Candidates</button>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-4">Interviews for this Job (${interviewsForJob.length})</h3>
+            <div id="job-interviews-container"></div>
+        `;
+        renderInterviewList(interviewsForJob, document.getElementById('job-interviews-container'));
+        navigateToSection('job-details-section', `Job: ${job.title}`);
+    }
+
+    function renderInterviewDetails(interview) {
+        let activeTab = 'scorecard';
+        if (interview.status === 'In Progress' || interview.status === 'Scheduled' || !interview.detailed_scorecard_json) {
+            activeTab = 'transcript';
+        }
+
+        const tabs = {
+            scorecard: { label: 'AI Scorecard' },
+            transcript: { label: 'Transcript' },
+            questions: { label: 'Q&A' },
+            screenshots: { label: 'Screenshots' },
+            scoring: { label: 'Manual Feedback' }
+        };
+
+        const renderTabContent = (tabKey) => {
+            switch(tabKey) {
+                case 'scorecard': return renderInterviewScorecard(interview);
+                case 'transcript': return renderInterviewTranscript(interview);
+                case 'questions': return renderInterviewAIQuestions(interview);
+                case 'screenshots': return renderInterviewScreenshots(interview);
+                case 'scoring': return renderInterviewScoring(interview);
+                default: return '';
+            }
+        };
+
+        function renderFullView() {
+            interviewDetailsSection.innerHTML = `
+                <button onclick="goBackToPreviousViewOrDashboard()" class="mb-4 text-indigo-600 hover:text-indigo-800 flex items-center text-sm"><i class="fas fa-arrow-left mr-2"></i> Back</button>
+                <div class="md:flex justify-between items-start mb-6">
+                    <div><h2 class="text-2xl font-bold text-gray-800">${interview.candidate_name || 'N/A'}</h2><p class="text-sm text-gray-500">For: ${interview.job_title}</p></div>
+                    <div class="text-right"><p class="font-semibold">Overall Score: <span class="text-2xl font-bold text-indigo-600">${interview.score || 'N/A'}</span>/100</p></div>
+                </div>
+                <div class="border-b border-gray-200 mb-6">
+                    <nav class="flex space-x-1 sm:space-x-2 -mb-px flex-wrap">
+                        ${Object.keys(tabs).map(key => `<button data-tab="${key}" class="tab-button px-4 py-2 font-medium text-sm sm:text-base ${activeTab === key ? 'active-nav' : ''}">${tabs[key].label}</button>`).join('')}
+                    </nav>
+                </div>
+                <div id="interview-tab-content" class="min-h-[200px]">${renderTabContent(activeTab)}</div>
+            `;
+
+            interviewDetailsSection.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    activeTab = e.target.dataset.tab;
+                    renderFullView();
+                });
+            });
+
+            if (activeTab === 'scorecard') {
+                setTimeout(() => drawScorecardChart(interview), 0);
+            }
+        }
+
+        renderFullView();
+        navigateToSection('interview-details-section', `Interview Details`);
+    }
+
+    function renderInterviewScorecard(interview) {
+        const scorecard = interview.detailed_scorecard_json;
+        if (!scorecard || scorecard.error) {
+            return `<div class="p-4 bg-yellow-50 text-yellow-800 rounded-lg">Scorecard analysis is pending or has failed.</div>`;
+        }
+        return `
+            <h3 class="text-xl font-bold text-gray-800 mb-4">AI-Generated Scorecard</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="md:col-span-1 bg-gray-50 p-4 rounded-xl flex items-center justify-center"><canvas id="scorecard-chart"></canvas></div>
+                <div class="md:col-span-2 bg-gray-50 p-6 rounded-xl">
+                     <h4 class="text-lg font-semibold text-gray-700">Overall Assessment</h4>
+                     <p class="mt-2 text-gray-600">${interview.ai_summary || "No summary provided."}</p>
+                </div>
+            </div>
+            <div class="space-y-6">
+                <h4 class="text-lg font-semibold text-gray-700">Category Breakdown</h4>
+                <div class="p-4 border rounded-lg">
+                    <div class="flex justify-between items-center"><h5 class="font-semibold text-indigo-700">Technical Proficiency</h5><span class="text-lg font-bold text-indigo-700">${scorecard.technical_proficiency?.score || 0}/10</span></div>
+                    <p class="mt-2 text-sm text-gray-600">${scorecard.technical_proficiency?.justification || 'N/A'}</p>
+                </div>
+                <div class="p-4 border rounded-lg">
+                    <div class="flex justify-between items-center"><h5 class="font-semibold text-emerald-700">Communication Skills</h5><span class="text-lg font-bold text-emerald-700">${scorecard.communication_skills?.score || 0}/10</span></div>
+                    <p class="mt-2 text-sm text-gray-600">${scorecard.communication_skills?.justification || 'N/A'}</p>
+                </div>
+                <div class="p-4 border rounded-lg">
+                    <div class="flex justify-between items-center"><h5 class="font-semibold text-sky-700">Alignment with Values</h5><span class="text-lg font-bold text-sky-700">${scorecard.alignment_with_values?.score || 0}/10</span></div>
+                    <p class="mt-2 text-sm text-gray-600">${scorecard.alignment_with_values?.justification || 'N/A'}</p>
+                </div>
+            </div>`;
+    }
+
+    function drawScorecardChart(interview) {
+        const scorecard = interview.detailed_scorecard_json;
+        if (!scorecard || scorecard.error) return;
+        const ctx = document.getElementById('scorecard-chart')?.getContext('2d');
+        if (!ctx) return;
+
+        new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: ['Technical', 'Communication', 'Alignment'],
+                datasets: [{
+                    data: [scorecard.technical_proficiency?.score || 0, scorecard.communication_skills?.score || 0, scorecard.alignment_with_values?.score || 0],
+                    backgroundColor: 'rgba(79, 70, 229, 0.2)',
+                    borderColor: 'rgba(79, 70, 229, 1)',
+                    borderWidth: 2
+                }]
+            },
+            options: { scales: { r: { suggestedMin: 0, suggestedMax: 10, ticks: { stepSize: 2 } } }, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function renderInterviewTranscript(interview) {
+        let transcriptHTML = '<p class="text-gray-500 text-sm">No transcript available.</p>';
+        if (interview.transcript && Array.isArray(interview.transcript) && interview.transcript.length > 0) {
+            transcriptHTML = '<div class="space-y-4">';
+            interview.transcript.forEach(item => {
+                const actorClass = item.actor === 'ai' ? 'bg-indigo-50 text-indigo-800' : 'bg-green-50 text-green-800';
+                const actorName = item.actor === 'ai' ? 'AI Interviewer' : 'Candidate';
+                transcriptHTML += `<div class="${actorClass} p-3 rounded-lg"><p class="font-semibold text-sm">${actorName}</p><p class="mt-1">${item.text}</p></div>`;
+            });
+            transcriptHTML += '</div>';
+        }
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Full Transcript</h3>${transcriptHTML}</div>`;
+    }
+
+    function renderInterviewAIQuestions(interview) {
+        let questionsHTML = '<p class="text-gray-500 text-sm">No Q&A recorded.</p>';
+        if (interview.questions && Array.isArray(interview.questions) && interview.questions.length > 0) {
+            questionsHTML = '<ul class="space-y-4">';
+            interview.questions.forEach((item, index) => {
+                questionsHTML += `<li class="p-3 border rounded-lg bg-gray-50"><p class="font-medium text-indigo-600 text-sm">Q${index + 1}: ${item.q}</p><p class="text-gray-700 mt-1 text-sm">A: ${item.a}</p></li>`;
+            });
+            questionsHTML += '</ul>';
+        }
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Questions & Answers</h3>${questionsHTML}</div>`;
+    }
+
+    function renderInterviewScreenshots(interview) {
+        let screenshotsHTML = `<div class="text-center py-8 px-4 border-2 border-dashed border-gray-300 rounded-lg"><i class="fas fa-image fa-3x text-gray-400 mx-auto"></i><h3 class="mt-2 text-sm font-medium text-gray-900">No Screenshots Available</h3></div>`;
+        const screenshotPaths = Array.isArray(interview.screenshots) ? interview.screenshots : [];
+        if (screenshotPaths.length > 0) {
+            screenshotsHTML = '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">';
+            screenshotPaths.forEach((srcPath, index) => {
+                const fullSrc = `${FILE_SERVER_BASE_URL}${srcPath.startsWith('/') ? '' : '/'}${srcPath}`;
+                screenshotsHTML += `<img src="${fullSrc}" alt="Screenshot ${index + 1}" class="rounded-lg shadow-md object-cover w-full h-48 border" onerror="this.onerror=null; this.src='https://placehold.co/300x200/CCCCCC/FFFFFF?text=Error';">`;
+            });
+            screenshotsHTML += '</div>';
+        }
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Screenshots</h3>${screenshotsHTML}</div>`;
+    }
+
+    function renderInterviewScoring(interview) {
+        return `<div><h3 class="text-lg font-semibold text-gray-700 mb-2">Manual Feedback & Score</h3><p class="text-gray-600">This feature is coming soon.</p></div>`;
+    }
+
+    // --- Modal Functions ---
+    function openAddJobModal() {
+        document.getElementById('job-form').reset();
+        document.getElementById('job-id-input').value = '';
+        document.getElementById('job-modal-title').textContent = 'Add New Job';
+        document.getElementById('job-form-error').classList.add('hidden');
+        document.getElementById('job-form-modal').classList.add('active');
+    }
+
+    function openEditJobModal(jobId) {
+        fetchData(`${API_BASE_URL}/jobs/${jobId}`)
+            .then(job => {
+                const form = document.getElementById('job-form');
+                form.reset();
+                document.getElementById('job-id-input').value = job.id;
+                document.getElementById('job-modal-title').textContent = 'Edit Job';
+                form.elements['title'].value = job.title;
+                form.elements['department'].value = job.department;
+                form.elements['description'].value = job.description;
+                form.elements['status'].value = job.status;
+                form.elements['number_of_questions'].value = job.number_of_questions || 5;
+                form.elements['must_ask_topics'].value = job.must_ask_topics || '';
+                document.getElementById('job-form-error').classList.add('hidden');
+                document.getElementById('job-form-modal').classList.add('active');
+            })
+            .catch(err => {
+                displayError(`Could not fetch job details for editing: ${err.message}`);
+            });
+    }
+
+    function closeJobFormModal() { document.getElementById('job-form-modal').classList.remove('active'); }
+    function openFeedbackModal() { document.getElementById('interview-feedback-modal').classList.add('active'); }
+    function closeFeedbackModal() { document.getElementById('interview-feedback-modal').classList.remove('active'); }
+
+    // --- API Call Handlers ---
+    async function loadDashboard() {
+        try {
+            const [summary, jobs, interviews] = await Promise.all([
+                fetchData(`${API_BASE_URL}/dashboard-summary`),
+                fetchData(`${API_BASE_URL}/jobs`),
+                fetchData(`${API_BASE_URL}/interviews`)
+            ]);
+            renderDashboard(summary, jobs, interviews);
+            navigateToSection('dashboard-overview-section', 'Admin Dashboard');
+        } catch (error) { /* error handled by fetchData */ }
+    }
+
+    async function loadJobDetails(jobId) {
+        try {
+            const [job, interviews] = await Promise.all([
+                fetchData(`${API_BASE_URL}/jobs/${jobId}`),
+                fetchData(`${API_BASE_URL}/interviews?job_id=${jobId}`)
+            ]);
+            renderJobDetails(job, interviews);
+        } catch (error) { /* error handled by fetchData */ }
+    }
+
+    async function loadInterviewDetails(interviewId) {
+        try {
+            const interview = await fetchData(`${API_BASE_URL}/interviews/${interviewId}`);
+            renderInterviewDetails(interview);
+        } catch (error) { /* error handled by fetchData */ }
+    }
+
+    async function deleteJob(jobId) {
+        if (confirm("Are you sure you want to delete this job? This action cannot be undone.")) {
+            try {
+                await fetchData(`${API_BASE_URL}/jobs/${jobId}`, { method: 'DELETE' });
+                loadDashboard();
+            } catch (error) { /* error handled by fetchData */ }
+        }
+    }
+
+    function goBackToPreviousViewOrDashboard() {
+        loadDashboard();
+    }
+
+    // --- Initial Load & Event Listeners ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const interviewId = urlParams.get('interview');
+        if (interviewId) {
+            loadInterviewDetails(interviewId);
+        } else {
+            loadDashboard();
+        }
+
+        document.getElementById('nav-dashboard').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
+        document.getElementById('nav-jobs').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
+        document.getElementById('nav-interviews').addEventListener('click', (e) => { e.preventDefault(); loadDashboard(); });
+
+        const sidebarToggleDesktop = document.getElementById('sidebar-toggle-desktop');
+        const sidebarOpenMobile = document.getElementById('sidebar-open-mobile');
+        const sidebarCloseMobile = document.getElementById('sidebar-close-mobile');
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        const sidebarTitle = document.getElementById('sidebar-title');
+        const itemTexts = document.querySelectorAll('.item-text');
+
+        function toggleSidebar(forceOpen = null) {
+            const isOpen = forceOpen !== null ? forceOpen : !sidebar.classList.contains('w-20');
+            if (isOpen) {
+                sidebar.classList.remove('w-64');
+                sidebar.classList.add('w-20');
+                mainContent.classList.remove('md:ml-64');
+                mainContent.classList.add('md:ml-20');
+                sidebarTitle.classList.add('hidden');
+                itemTexts.forEach(text => text.classList.add('hidden'));
+                sidebarToggleDesktop.innerHTML = '<i class="fas fa-chevron-right"></i>';
+            } else {
+                sidebar.classList.remove('w-20');
+                sidebar.classList.add('w-64');
+                mainContent.classList.remove('md:ml-20');
+                mainContent.classList.add('md:ml-64');
+                sidebarTitle.classList.remove('hidden');
+                itemTexts.forEach(text => text.classList.remove('hidden'));
+                sidebarToggleDesktop.innerHTML = '<i class="fas fa-chevron-left"></i>';
+            }
+        }
+        if (sidebarToggleDesktop) sidebarToggleDesktop.addEventListener('click', () => toggleSidebar());
+        if (sidebarOpenMobile) sidebarOpenMobile.addEventListener('click', () => sidebar.classList.add('open'));
+        if (sidebarCloseMobile) sidebarCloseMobile.addEventListener('click', () => sidebar.classList.remove('open'));
+
+        const jobFormElement = document.getElementById('job-form');
+        jobFormElement.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const jobFormError = document.getElementById('job-form-error');
+            jobFormError.classList.add('hidden');
+            const formData = new FormData(jobFormElement);
+            const jobData = Object.fromEntries(formData.entries());
+            const jobId = document.getElementById('job-id-input').value;
+
+            if (!jobData.title || !jobData.department || !jobData.description) {
+                jobFormError.textContent = "Please fill all required fields.";
+                jobFormError.classList.remove('hidden');
+                return;
+            }
+
+            const url = jobId ? `${API_BASE_URL}/jobs/${jobId}` : `${API_BASE_URL}/jobs`;
+            const method = jobId ? 'PUT' : 'POST';
+
+            try {
+                await fetchData(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(jobData)
+                });
+                closeJobFormModal();
+                loadDashboard();
+            } catch (error) {
+                jobFormError.textContent = error.message || "Failed to save job.";
+                jobFormError.classList.remove('hidden');
+            }
+        });
+    });
+</script>
+</body>
+</html>

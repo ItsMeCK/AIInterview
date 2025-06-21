@@ -1,0 +1,12 @@
+Flask
+Flask-Cors
+Flask-Login
+Flask-Bcrypt
+Flask-Mail
+gunicorn
+mysql-connector-python
+python-dotenv
+langchain-openai
+langchain
+openai
+google-cloud-secret-manager

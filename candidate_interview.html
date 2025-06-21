@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>AI Interview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #020617; /* Slate 950 */
+            overflow: hidden;
+        }
+
+        .modal-overlay {
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.6);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .video-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+
+        .video-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .ai-avatar {
+            width: 72px;
+            height: 72px;
+            border: 3px solid transparent;
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            box-shadow: 0 0 15px rgba(79, 70, 229, 0.3);
+        }
+        .ai-avatar.speaking {
+            border-color: #6366F1;
+            box-shadow: 0 0 30px rgba(99, 102, 241, 0.6);
+            transform: scale(1.05);
+        }
+
+        .bottom-sheet {
+            background: linear-gradient(180deg, rgba(15, 23, 42, 0.7) 0%, rgba(15, 23, 42, 0.9) 30%, #0F172A 100%);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .transcript-area::-webkit-scrollbar { display: none; }
+        .transcript-area { -ms-overflow-style: none; scrollbar-width: none; }
+
+
+        .transcript-actor-ai { color: #818CF8; font-weight: 600; }
+        .transcript-actor-candidate { color: #34D399; font-weight: 600; }
+
+        .hidden-section { display: none !important; }
+
+        .mic-listening i {
+            color: #F87171; /* Red 400 */
+            animation: pulse 1.5s infinite;
+        }
+
+        .primary-btn {
+            background: linear-gradient(to right, #4F46E5, #7C3AED);
+            transition: all 0.3s ease;
+        }
+        .primary-btn:hover {
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .timer-progress-circle {
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 10px 10px rgba(248, 113, 113, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+        }
+
+        .loader {
+            width: 48px; height: 48px; border: 3px solid #4F46E5;
+            border-bottom-color: transparent; border-radius: 50%;
+            display: inline-block; box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="text-slate-200">
+
+    <!-- Main Interview Layout -->
+    <div id="interview-layout" class="hidden-section h-screen w-screen flex flex-col lg:flex-row">
+        <!-- Video Background (Mobile & Desktop) -->
+        <div class="video-container lg:w-1/2">
+            <video id="camera-feed" class="w-full h-full object-cover" autoplay muted playsinline></video>
+
+            <!-- AI Avatar Overlay -->
+            <div class="absolute top-4 left-4">
+                <div class="relative">
+                    <img id="ai-avatar-img" src="https://placehold.co/80x80/1E293B/94A3B8?text=AI" alt="AI Interviewer" class="ai-avatar mx-auto rounded-full">
+                    <div id="ai-status-icon" class="absolute -bottom-1 -right-1 bg-slate-700 rounded-full p-2 border-2 border-slate-900">
+                        <i class="fas fa-brain text-indigo-400 text-xs"></i>
+                    </div>
+                </div>
+                 <p id="ai-status" class="text-center font-semibold text-slate-300 text-xs mt-1">Initializing...</p>
+            </div>
+
+            <!-- End Interview Button Overlay -->
+            <div class="absolute top-4 right-4 z-20">
+                <button id="end-interview-button" class="bg-red-600/80 text-white py-2 px-4 rounded-lg hover:bg-red-600/100 transition-colors font-semibold flex items-center text-sm">
+                    <i class="fas fa-phone-slash mr-2"></i> End
+                </button>
+            </div>
+             <!-- Timer Display -->
+            <div id="timer-container" class="absolute bottom-4 right-4 text-center hidden-section lg:top-4">
+                <div class="relative w-16 h-16">
+                     <svg class="w-full h-full transform -rotate-90">
+                        <circle class="text-slate-700" stroke-width="5" stroke="currentColor" fill="transparent" r="28" cx="32" cy="32"/>
+                        <circle id="timer-progress" class="text-indigo-400 timer-progress-circle"
+                            stroke-width="5"
+                            stroke-linecap="round"
+                            stroke="currentColor"
+                            fill="transparent"
+                            r="28"
+                            cx="32"
+                            cy="32"
+                        />
+                    </svg>
+                    <span id="timer-text" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 font-bold text-lg">90</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel / Bottom Sheet -->
+        <div class="lg:w-1/2 w-full h-1/2 lg:h-full p-4 sm:p-6 flex flex-col bg-slate-900/50 lg:bg-slate-800/50 bottom-sheet absolute bottom-0 lg:static z-20">
+            <div class="mb-4 flex-shrink-0">
+                 <h1 id="info-job-title" class="text-xl sm:text-2xl font-bold text-white"></h1>
+                 <p id="info-company-name" class="text-slate-400 text-sm"></p>
+            </div>
+            <div id="transcript-area" class="transcript-area rounded-lg flex-grow p-4 mb-4 min-h-0 overflow-y-auto"></div>
+            <div id="interaction-status-area" class="p-4 bg-slate-900/50 rounded-lg min-h-[70px] flex items-center justify-center text-center flex-shrink-0">
+                <div id="interaction-status-text" class="text-slate-300 font-medium text-lg"></div>
+                <button id="speak-button" class="hidden-section primary-btn w-full text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center text-lg">
+                    <i class="fas fa-microphone-alt mr-3"></i> Tap to Speak
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlays -->
+    <div id="loading-overlay" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
+        <div class="text-center">
+            <div class="loader mx-auto"></div>
+            <p class="text-lg text-slate-400 mt-6">Loading Interview Details...</p>
+        </div>
+    </div>
+    <div id="error-overlay" class="hidden-section modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-8 text-center max-w-md">
+            <i class="fas fa-exclamation-triangle text-red-400 fa-3x mb-4"></i>
+            <h2 class="text-2xl font-semibold text-red-400 mb-2">Error</h2>
+            <p id="error-message" class="text-slate-300"></p>
+            <button onclick="window.location.reload()" class="primary-btn mt-8 text-white font-bold py-2 px-6 rounded-lg">Try Again</button>
+        </div>
+    </div>
+    <div id="permissions-overlay" class="hidden-section modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+         <div class="glass-card rounded-2xl p-8 text-center max-w-lg">
+            <i class="fas fa-shield-halved text-indigo-400 text-5xl mb-6"></i>
+            <h2 class="text-3xl font-bold text-white mb-2">Permissions Required</h2>
+            <p class="text-slate-400 mb-8">This interview requires camera and microphone access to proceed. Please click the button below to grant permissions.</p>
+            <button id="grant-permissions-btn" class="primary-btn w-full text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center text-lg">Grant Access</button>
+        </div>
+    </div>
+    <div id="instructions-overlay" class="hidden-section modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+         <div class="glass-card rounded-2xl p-8 text-center max-w-lg">
+            <i class="fas fa-info-circle text-indigo-400 text-5xl mb-6"></i>
+            <h2 class="text-3xl font-bold text-white mb-4">Interview Instructions</h2>
+            <div class="text-left space-y-4 text-slate-300">
+                <p>You will be speaking with <strong>Alex</strong>, our AI interviewer. Please review the following guidelines for a successful interview.</p>
+                <ul class="space-y-3">
+                    <li class="flex items-start"><i class="fas fa-headset w-6 text-indigo-400 mt-1"></i><span>Find a quiet, well-lit place to avoid distractions.</span></li>
+                    <li class="flex items-start"><i class="fas fa-microphone w-6 text-indigo-400 mt-1"></i><span>Speak clearly. When it's your turn, the microphone will activate. On mobile, you may need to tap a button to speak.</span></li>
+                    <li class="flex items-start"><i class="fas fa-eye w-6 text-indigo-400 mt-1"></i><span>Please keep your camera on and stay visible throughout the interview.</span></li>
+                    <li class="flex items-start"><i class="fas fa-window-maximize w-6 text-indigo-400 mt-1"></i><span>Stay in this browser tab. Switching tabs may end the interview automatically.</span></li>
+                </ul>
+            </div>
+            <button id="start-details-btn" class="primary-btn mt-8 w-full text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center text-lg">
+                I Understand, Continue
+            </button>
+        </div>
+    </div>
+    <div id="welcome-overlay" class="hidden-section modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-8 text-center max-w-lg">
+             <h1 class="text-3xl font-bold text-white mb-4">Final Step</h1>
+             <p class="text-slate-400 mb-8">Your camera and mic are set up. Please confirm your details below to begin.</p>
+            <form id="candidate-details-form" class="space-y-6 text-left">
+                <div>
+                    <label for="candidateName" class="block text-sm font-medium text-slate-300 mb-1">Full Name</label>
+                    <input type="text" id="candidateName" name="candidateName" required class="form-input w-full px-4 py-2 rounded-lg focus:outline-none">
+                </div>
+                <div>
+                    <label for="candidateEmail" class="block text-sm font-medium text-slate-300 mb-1">Email Address</label>
+                    <input type="email" id="candidateEmail" name="candidateEmail" required class="form-input w-full px-4 py-2 rounded-lg focus:outline-none">
+                </div>
+                <div>
+                    <label for="resumeFile" class="block text-sm font-medium text-slate-300 mb-1">Upload Resume</label>
+                    <input type="file" id="resumeFile" name="resumeFile" required accept=".pdf,.doc,.docx,.txt" class="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-300 hover:file:bg-indigo-500/20">
+                </div>
+                <div id="submit-details-error" class="hidden-section text-red-400 text-sm"></div>
+                <button type="submit" id="submit-details-button" class="primary-btn w-full text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center text-lg">
+                    Start Interview <i class="fas fa-arrow-right ml-3"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+    <div id="ended-overlay" class="hidden-section modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="glass-card rounded-2xl p-12 text-center max-w-md">
+            <i class="fas fa-check-circle text-emerald-400 text-5xl mb-6"></i>
+            <h2 class="text-3xl font-bold text-white mb-2">Interview Concluded</h2>
+            <p class="text-slate-400">Thank you for your time. The hiring team will be in touch regarding the next steps.</p>
+        </div>
+    </div>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        const API_BASE_URL = '/api/interview';
+        const ANSWER_TIME_LIMIT = 90;
+
+        let currentInterviewId = null, audioContext, speechTimeout, masterTimer, visualTimerInterval, isListening = false, cameraStream = null;
+
+        const domElements = {
+            overlays: { loading: document.getElementById('loading-overlay'), error: document.getElementById('error-overlay'), permissions: document.getElementById('permissions-overlay'), welcome: document.getElementById('welcome-overlay'), ended: document.getElementById('ended-overlay'), instructions: document.getElementById('instructions-overlay') },
+            interviewLayout: document.getElementById('interview-layout'),
+            errorMessageEl: document.getElementById('error-message'),
+            infoJobTitleEl: document.getElementById('info-job-title'),
+            infoCompanyNameEl: document.getElementById('info-company-name'),
+            candidateDetailsForm: document.getElementById('candidate-details-form'),
+            submitDetailsErrorEl: document.getElementById('submit-details-error'),
+            transcriptArea: document.getElementById('transcript-area'),
+            aiAvatarImg: document.getElementById('ai-avatar-img'),
+            aiStatusEl: document.getElementById('ai-status'),
+            aiStatusIcon: document.getElementById('ai-status-icon'),
+            interactionStatusText: document.getElementById('interaction-status-text'),
+            speakButton: document.getElementById('speak-button'),
+            endInterviewButton: document.getElementById('end-interview-button'),
+            cameraFeed: document.getElementById('camera-feed'),
+            grantPermissionsBtn: document.getElementById('grant-permissions-btn'),
+            startDetailsBtn: document.getElementById('start-details-btn'),
+            timerContainer: document.getElementById('timer-container'),
+            timerText: document.getElementById('timer-text'),
+            timerProgress: document.getElementById('timer-progress')
+        };
+
+        function isMobileDevice() {
+            return ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+
+        function initializeRecognition() {
+            if (!SpeechRecognition) {
+                displayError("This browser does not support Speech Recognition.");
+                return;
+            }
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            let finalTranscript = '';
+            recognition.onstart = () => { isListening = true; finalTranscript = ''; };
+            recognition.onresult = (event) => {
+                clearTimeout(speechTimeout);
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript.trim() + ' ';
+                    else interimTranscript += event.results[i][0].transcript;
+                }
+                domElements.interactionStatusText.textContent = finalTranscript + interimTranscript;
+                speechTimeout = setTimeout(() => recognition.stop(), 5000);
+            };
+            recognition.onend = () => {
+                 isListening = false;
+                 clearTimers();
+                if (finalTranscript.trim().length > 3) {
+                    setInteractionStatus('processing');
+                    appendToTranscript('candidate', finalTranscript.trim());
+                    submitResponse(finalTranscript.trim());
+                } else if (!domElements.interviewLayout.classList.contains('hidden-section')) {
+                    setInteractionStatus('listening');
+                }
+            };
+            recognition.onerror = (event) => {
+                 isListening = false;
+                 if (event.error !== 'no-speech') setInteractionStatus('error', 'Sorry, I had trouble hearing you.');
+            };
+        }
+
+        function showOverlay(overlayId) {
+            Object.values(domElements.overlays).forEach(o => o.classList.add('hidden-section'));
+            if (overlayId) domElements.overlays[overlayId].classList.remove('hidden-section');
+        }
+
+        function displayError(message) {
+            domElements.errorMessageEl.textContent = message;
+            domElements.interviewLayout.classList.add('hidden-section');
+            showOverlay('error');
+            if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+            if (screenshotInterval) clearInterval(screenshotInterval);
+        }
+
+        function appendToTranscript(actor, text) {
+            const entry = document.createElement('div');
+            entry.className = 'transcript-entry p-3 rounded-lg';
+            entry.innerHTML = `<span class="transcript-actor-${actor}">${actor === 'ai' ? 'AI' : 'You'}:</span><p class="text-slate-300 mt-1">${text}</p>`;
+            domElements.transcriptArea.appendChild(entry);
+            domElements.transcriptArea.scrollTop = domElements.transcriptArea.scrollHeight;
+        }
+
+        function setInteractionStatus(status, text) {
+            const { aiStatusIcon, aiStatusEl, aiAvatarImg, interactionStatusText, speakButton, timerContainer } = domElements;
+            timerContainer.classList.add('hidden-section');
+            aiStatusIcon.innerHTML = '';
+            speakButton.classList.add('hidden-section');
+            interactionStatusText.classList.remove('hidden-section');
+
+            switch (status) {
+                case 'speaking':
+                    aiStatusEl.textContent = 'Speaking...';
+                    aiAvatarImg.classList.add('speaking');
+                    interactionStatusText.textContent = text || 'AI is asking a question...';
+                    aiStatusIcon.innerHTML = `<i class="fas fa-volume-up text-indigo-400 text-xs"></i>`;
+                    if(isListening && recognition) recognition.stop();
+                    break;
+                case 'listening':
+                    aiStatusEl.textContent = 'Listening...';
+                    aiAvatarImg.classList.remove('speaking');
+                    aiStatusIcon.innerHTML = `<i class="fas fa-microphone text-red-400 text-xs"></i>`;
+
+                    if (isMobileDevice()) {
+                        interactionStatusText.classList.add('hidden-section');
+                        speakButton.classList.remove('hidden-section');
+                    } else {
+                        interactionStatusText.innerHTML = `<span class="mic-listening"><i class="fas fa-microphone-alt fa-lg mr-3"></i></span> ${text || 'Your turn to speak.'}`;
+                        if(!isListening && recognition) recognition.start();
+                    }
+                    startTimers();
+                    break;
+                case 'processing':
+                    aiStatusEl.textContent = 'Thinking...';
+                    aiAvatarImg.classList.remove('speaking');
+                    interactionStatusText.innerHTML = `<div class="loader-small" style="width: 24px; height: 24px; border: 2px solid #6366F1; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite;"></div><span class="ml-3">${text || 'Processing...'}</span>`;
+                    aiStatusIcon.innerHTML = `<i class="fas fa-brain text-indigo-400 text-xs animate-pulse"></i>`;
+                    if(isListening && recognition) recognition.stop();
+                    break;
+                default:
+                    aiStatusEl.textContent = 'Waiting';
+                    interactionStatusText.textContent = text || 'Please wait.';
+                    if(isListening && recognition) recognition.stop();
+            }
+        }
+
+        function startTimers() {
+            const { timerContainer, timerText, timerProgress } = domElements;
+            const radius = 28;
+            const circumference = 2 * Math.PI * radius;
+            let timeLeft = ANSWER_TIME_LIMIT;
+
+            timerContainer.classList.remove('hidden-section');
+            timerProgress.style.strokeDasharray = circumference;
+
+            const updateTimerDisplay = () => {
+                timerText.textContent = timeLeft;
+                const offset = circumference - (timeLeft / ANSWER_TIME_LIMIT) * circumference;
+                timerProgress.style.strokeDashoffset = offset;
+            };
+
+            updateTimerDisplay();
+
+            masterTimer = setTimeout(() => {
+                if(isListening) recognition.stop();
+            }, ANSWER_TIME_LIMIT * 1000);
+
+            visualTimerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                if (timeLeft <= 0) {
+                    clearInterval(visualTimerInterval);
+                }
+            }, 1000);
+        }
+
+        function clearTimers() {
+            clearTimeout(masterTimer);
+            clearInterval(visualTimerInterval);
+            if(domElements.timerContainer) domElements.timerContainer.classList.add('hidden-section');
+        }
+
+        async function setupCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                displayError("Camera not supported by your browser.");
+                return false;
+            }
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                domElements.cameraFeed.srcObject = cameraStream;
+                return true;
+            } catch (err) {
+                displayError("Camera and microphone access are required. Please allow access and refresh.");
+                return false;
+            }
+        }
+
+        async function captureAndSendScreenshot() {
+            if (!cameraStream || !currentInterviewId) return;
+            const canvas = document.createElement('canvas');
+            const video = domElements.cameraFeed;
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            try {
+                await fetch(`${API_BASE_URL}/${currentInterviewId}/screenshot`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imageDataUrl })
+                });
+            } catch (error) { console.error("Failed to send screenshot:", error); }
+        }
+
+        function playQuestionAudio(text) {
+            return new Promise(async (resolve) => {
+                setInteractionStatus('speaking');
+                try {
+                    const response = await fetch(`${API_BASE_URL}/text-to-speech`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text })
+                    });
+                    if (!response.ok) throw new Error('Failed to fetch audio.');
+                    const audioData = await response.arrayBuffer();
+                    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const audioBuffer = await audioContext.decodeAudioData(audioData);
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioContext.destination);
+                    source.start(0);
+                    source.onended = resolve;
+                } catch (error) { setTimeout(resolve, 3000); }
+            });
+        }
+
+        async function initiateInterview(invitationLink) {
+            showOverlay('loading');
+            try {
+                const response = await fetch(`${API_BASE_URL}/initiate/${invitationLink}`);
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                    throw new Error(err.message || 'Failed to load interview.');
+                }
+                const data = await response.json();
+                currentInterviewId = data.interview_id;
+                domElements.infoJobTitleEl.textContent = data.job_title || 'N/A';
+                domElements.infoCompanyNameEl.textContent = `with ${data.company_name || 'N/A'}`;
+                showOverlay('permissions');
+            } catch (error) { displayError(error.message); }
+        }
+
+        async function handleGrantPermissions() {
+            domElements.grantPermissionsBtn.disabled = true;
+            const cameraReady = await setupCamera();
+            if (cameraReady) showOverlay('instructions');
+            domElements.grantPermissionsBtn.disabled = false;
+        }
+
+        async function startInterviewFlow() {
+            showOverlay(null);
+            domElements.interviewLayout.classList.remove('hidden-section');
+            setInteractionStatus('processing', 'Preparing first question...');
+            screenshotInterval = setInterval(captureAndSendScreenshot, 30000);
+            try {
+                const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/start`, { method: 'POST' });
+                if (!response.ok) {
+                     if (response.status === 503) throw new Error("AI service unavailable.");
+                    const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                    throw new Error(err.message || 'Failed to start.');
+                }
+                const data = await response.json();
+                await askQuestion(data.question.text);
+            } catch (error) { displayError("Could not start interview: " + error.message); }
+        }
+
+        async function submitResponse(responseText) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/next-question`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ response_text: responseText })
+                });
+                if (!response.ok) throw new Error('Failed to get next question.');
+                const data = await response.json();
+                if (data.interview_status === 'Completed') {
+                    appendToTranscript('ai', data.question.text);
+                    setInteractionStatus('speaking', 'Interview complete. Thank you.');
+                    await playQuestionAudio(data.question.text);
+                    setTimeout(() => {
+                        domElements.interviewLayout.classList.add('hidden-section');
+                        showOverlay('ended');
+                        if(screenshotInterval) clearInterval(screenshotInterval);
+                    }, 2000);
+                } else {
+                    await askQuestion(data.question.text);
+                }
+            } catch (error) {
+                setInteractionStatus('error', "Error processing response. Trying to recover...");
+                setTimeout(startInterviewFlow, 3000);
+            }
+        }
+
+        async function askQuestion(questionText) {
+            appendToTranscript('ai', questionText);
+            await playQuestionAudio(questionText);
+            setInteractionStatus('listening');
+        }
+
+        initializeRecognition();
+
+        domElements.grantPermissionsBtn.addEventListener('click', handleGrantPermissions);
+        domElements.startDetailsBtn.addEventListener('click', () => showOverlay('welcome'));
+
+        domElements.speakButton.addEventListener('click', () => {
+            if (!isListening && recognition) {
+                domElements.interactionStatusText.innerHTML = `<span class="mic-listening"><i class="fas fa-microphone-alt fa-lg mr-3"></i></span> Listening...`;
+                domElements.interactionStatusText.classList.remove('hidden-section');
+                domElements.speakButton.classList.add('hidden-section');
+                recognition.start();
+            }
+        });
+
+        domElements.endInterviewButton.addEventListener('click', async () => {
+            if (confirm("Are you sure you want to end the interview?")) {
+                clearTimers();
+                if (recognition && isListening) recognition.stop();
+                if (cameraStream) cameraStream.getTracks().forEach(track => track.stop());
+                if (screenshotInterval) clearInterval(screenshotInterval);
+                try {
+                    await fetch(`${API_BASE_URL}/${currentInterviewId}/end`, { method: 'POST' });
+                } catch (error) { console.error("Failed to notify backend of manual end:", error); }
+                showOverlay('ended');
+            }
+        });
+
+        domElements.candidateDetailsForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!currentInterviewId) return displayError("Interview ID missing.");
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            const formData = new FormData(domElements.candidateDetailsForm);
+            try {
+                const response = await fetch(`${API_BASE_URL}/${currentInterviewId}/submit-details`, { method: 'POST', body: formData });
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({ message: `HTTP error ${response.status}` }));
+                    throw new Error(err.message || 'Failed to submit details.');
+                }
+                await response.json();
+                await startInterviewFlow();
+            } catch (error) {
+                domElements.submitDetailsErrorEl.textContent = error.message;
+                domElements.submitDetailsErrorEl.classList.remove('hidden-section');
+            } finally {
+                submitButton.disabled = false;
+            }
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const invitationLink = urlParams.get('invite');
+        if (invitationLink) {
+            initiateInterview(invitationLink);
+        } else {
+            showOverlay('loading');
+            displayError("No invitation link found. Please use the link from your invitation.");
+        }
+    });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+/* --- General Setup & Variables --- */
+:root {
+    --bg-dark: #020617;
+    --bg-medium: #0f172a;
+    --bg-light: #1e293b;
+    --primary-blue: #3b82f6;
+    --primary-glow: rgba(59, 130, 246, 0.5);
+    --text-light: #e2e8f0;
+    --text-medium: #94a3b8;
+    --text-dark: #64748b;
+    --border-color: #334155;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-light);
+    overflow-x: hidden;
+}
+
+/* --- Header --- */
+header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 1rem 2rem;
+    background-color: rgba(2, 6, 23, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid transparent;
+    transition: all 0.3s ease;
+}
+
+header.scrolled {
+    border-bottom-color: var(--border-color);
+}
+
+.logo a {
+    font-weight: 800;
+    font-size: 1.5rem;
+    color: white;
+}
+
+/* --- Hero Section --- */
+.hero-section {
+    position: relative;
+    padding: 6rem 1rem;
+    text-align: center;
+    background: radial-gradient(ellipse 80% 50% at 50% -20%, var(--primary-glow), rgba(2, 6, 23, 0));
+}
+
+.hero-section h1 {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    background: linear-gradient(180deg, white, var(--text-medium));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.cta-button {
+    background: var(--primary-blue);
+    padding: 0.75rem 1.5rem;
+    font-weight: 600;
+    border-radius: 0.5rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 20px var(--primary-glow);
+}
+
+.cta-button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 30px var(--primary-glow);
+}
+
+/* --- Features Section --- */
+.features-section {
+    padding: 6rem 0;
+}
+
+.feature-row {
+    transition: transform 0.4s ease;
+}
+
+.feature-row:hover {
+    transform: scale(1.02);
+}
+
+.feature-image {
+    border-radius: 1.5rem;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+    transition: transform 0.4s ease, box-shadow 0.4s ease;
+    width: 100%;
+    height: 480px;
+    object-fit: cover;
+    background-color: var(--bg-light);
+}
+
+.feature-row:hover .feature-image {
+    box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.45);
+}
+
+.feature-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+}
+
+.feature-text h3 {
+    font-size: 2.25rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    line-height: 1.2;
+}
+
+.feature-text p {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    color: var(--text-medium);
+    max-width: 500px;
+}
+
+/* --- How It Works / Trust Cards --- */
+.step-card, .trust-card {
+    transition: all 0.3s ease;
+}
+
+.step-card:hover, .trust-card:hover {
+    transform: scale(1.05);
+}
+
+/* --- Benefits Section --- */
+.benefit-card {
+    background: var(--bg-medium);
+    border: 1px solid var(--border-color);
+    padding: 2rem;
+    border-radius: 1rem;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+.benefit-card:hover {
+    transform: translateY(-5px);
+    background: var(--bg-light);
+}
+
+/* --- Contact Section --- */
+.contact-button {
+    border: 1px solid var(--border-color);
+}
+
+/* --- Animations --- */
+.animated-section {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+.animated-section.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* --- Modals --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.modal-overlay:not(.hidden) {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-panel {
+    background: var(--bg-medium);
+    border: 1px solid var(--border-color);
+    border-radius: 1rem;
+    padding: 2rem;
+    width: 100%;
+    max-width: 400px;
+    position: relative;
+    transform: scale(0.95);
+    transition: transform 0.3s ease;
+}
+
+.modal-overlay:not(.hidden) .modal-panel {
+    transform: scale(1);
+}
+
+.modal-close-btn {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    color: var(--text-dark);
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.3s ease;
+}
+
+.modal-close-btn:hover {
+    color: var(--text-light);
+}
+
+.modal-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background-color: var(--bg-dark);
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    color: var(--text-light);
+    transition: all 0.3s ease;
+}
+
+.modal-input:focus {
+    outline: none;
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 0 3px var(--primary-glow);
+}
+
+.error-message {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #f87171; /* red-400 */
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.hidden {
+    display: none;
+}
+
+/* --- Responsive Design --- */
+@media (max-width: 768px) {
+    .hero-section h1 {
+        font-size: 2.5rem;
+    }
+    header {
+        padding: 1rem;
+    }
+    .grid {
+        grid-template-columns: 1fr;
+    }
+    .feature-card, .benefit-card {
+        margin-bottom: 2rem;
+    }
+} 

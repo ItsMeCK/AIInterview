@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview - Intelligent Hiring</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+</head>
+<body class="bg-slate-900 text-white">
+
+    <!-- Header -->
+    <header class="py-4 px-8 flex justify-between items-center">
+        <div class="logo">
+            <a href="{{ url_for('main_bp.index') }}">AI Portal</a>
+        </div>
+        <nav class="flex items-center gap-6">
+            <a href="#contact-section" class="text-slate-300 hover:text-white transition-colors font-medium">Contact</a>
+            <button data-modal-target="login-modal" class="text-slate-300 hover:text-white transition-colors font-medium">Login</button>
+            <button data-modal-target="register-modal" class="cta-button">
+                Get Started
+            </button>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section animated-section">
+        <h1 class="text-5xl font-extrabold mb-4">Hire Smarter, Not Harder</h1>
+        <p class="text-xl text-slate-400 mb-8 max-w-3xl mx-auto">
+            Our AI-powered platform automates technical interviews, providing unbiased, in-depth analysis of every candidate.
+        </p>
+        <button data-modal-target="register-modal" class="cta-button">
+            Get Started for Free
+        </button>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section animated-section">
+        <div class="container mx-auto px-8">
+            <h2 class="text-5xl font-bold text-center mb-24">Powerful Features, Unbiased Results</h2>
+            <div class="space-y-28">
+
+                <!-- Feature 1: Admin Dashboard -->
+                <div class="feature-row grid md:grid-cols-2 items-center gap-16">
+                    <div class="feature-text text-left">
+                        <h3>Centralized Admin Dashboard</h3>
+                        <p>
+                            Manage job postings, track all candidates, and review interview results from a single, intuitive dashboard. Get a bird's-eye view of your entire hiring pipeline.
+                        </p>
+                    </div>
+                    <div>
+                        <img src="{{ url_for('static', filename='images/admin_dashboard.png') }}" alt="Admin Dashboard" class="feature-image" loading="lazy">
+                    </div>
+                </div>
+
+                <!-- Feature 2: AI Scorecard -->
+                <div class="feature-row grid md:grid-cols-2 items-center gap-16">
+                    <div class="md:order-last">
+                         <img src="{{ url_for('static', filename='images/ai_scorecard.png') }}" alt="AI Scorecard" class="feature-image" loading="lazy">
+                    </div>
+                    <div class="feature-text text-left">
+                        <h3>In-Depth AI Scorecard</h3>
+                        <p>
+                            Go beyond resumes. Our AI provides a detailed, unbiased analysis of technical skills, communication, and problem-solving abilities, complete with a comprehensive scorecard.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Feature 3: Full Transcript -->
+                <div class="feature-row grid md:grid-cols-2 items-center gap-16">
+                     <div class="feature-text text-left">
+                        <h3>Complete Interview Transcript</h3>
+                        <p>
+                            Review the entire interview from start to finish. Our platform provides a full transcript with speaker labels, timestamps, and AI-powered insights for total transparency.
+                        </p>
+                    </div>
+                    <div>
+                        <img src="{{ url_for('static', filename='images/full_transcript.png') }}" alt="Full Transcript" class="feature-image" loading="lazy">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Benefits Section -->
+    <section class="py-20 bg-slate-800 animated-section">
+        <div class="container mx-auto px-8">
+            <h2 class="text-4xl font-bold text-center mb-12">The Future of Hiring is Here</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+                <div class="benefit-card">
+                    <div class="benefit-icon"><i class="fas fa-dollar-sign"></i></div>
+                    <h3 class="text-xl font-bold mb-2">Reduce Costs</h3>
+                    <p class="text-slate-400">Save up to 70% on initial screening costs by automating technical interviews.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon"><i class="fas fa-bolt"></i></div>
+                    <h3 class="text-xl font-bold mb-2">Hire Faster</h3>
+                    <p class="text-slate-400">Accelerate your time-to-hire by 5x with on-demand, automated interviews.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon"><i class="fas fa-balance-scale"></i></div>
+                    <h3 class="text-xl font-bold mb-2">Eliminate Bias</h3>
+                    <p class="text-slate-400">Ensure fair and consistent evaluations with our unbiased AI-driven scoring.</p>
+                </div>
+                <div class="benefit-card">
+                    <div class="benefit-icon"><i class="fas fa-users"></i></div>
+                    <h3 class="text-xl font-bold mb-2">Scale Your Pipeline</h3>
+                    <p class="text-slate-400">Interview hundreds of candidates simultaneously without overwhelming your team.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="py-20 animated-section">
+        <div class="container mx-auto px-8">
+            <h2 class="text-4xl font-bold text-center mb-12">How It Works</h2>
+            <div class="grid md:grid-cols-3 gap-8 text-center">
+                <div class="step-card">
+                    <div class="step-icon"><i class="fas fa-upload"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">1. Create Job</h3>
+                    <p class="text-slate-400">
+                        Create a job posting and our AI will generate a tailored interview.
+                    </p>
+                </div>
+                <div class="step-card">
+                    <div class="step-icon"><i class="fas fa-robot"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">2. AI Interview</h3>
+                    <p class="text-slate-400">
+                        Candidates take an automated, AI-led interview at their convenience.
+                    </p>
+                </div>
+                <div class="step-card">
+                    <div class="step-icon"><i class="fas fa-chart-line"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">3. Review Results</h3>
+                    <p class="text-slate-400">
+                        Get in-depth analysis and unbiased scorecards for every candidate.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Trust & Security Section -->
+    <section class="py-20 animated-section">
+        <div class="container mx-auto px-8">
+            <h2 class="text-4xl font-bold text-center mb-12">Security & Integrity You Can Trust</h2>
+            <div class="grid md:grid-cols-3 gap-8 text-center">
+                <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-shield-alt"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">Data Security</h3>
+                    <p class="text-slate-400">
+                        Your data is protected with end-to-end encryption and secure cloud infrastructure.
+                    </p>
+                </div>
+                <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-video"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">Interview Recording</h3>
+                    <p class="text-slate-400">
+                        Full video and audio recordings of every interview for comprehensive review and compliance.
+                    </p>
+                </div>
+                <div class="trust-card">
+                    <div class="trust-icon"><i class="fas fa-user-check"></i></div>
+                    <h3 class="text-2xl font-bold mb-2">Fraud Prevention</h3>
+                    <p class="text-slate-400">
+                        Advanced proctoring and identity verification to ensure interview integrity.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action / Contact Section -->
+    <section id="contact-section" class="py-20 bg-slate-800 animated-section">
+        <div class="container mx-auto px-8 text-center">
+            <h2 class="text-4xl font-bold mb-4">Ready to Revolutionize Your Hiring?</h2>
+            <p class="text-slate-400 text-xl mb-8">Get in touch with us today to learn more or request a demo.</p>
+            <div class="flex flex-col md:flex-row items-center justify-center gap-6">
+                <a href="mailto:chandrakant7892@gmail.com" class="contact-button">
+                    <i class="fas fa-envelope mr-3"></i> chandrakant7892@gmail.com
+                </a>
+                <a href="tel:+918446277653" class="contact-button">
+                    <i class="fas fa-phone-alt mr-3"></i> +91 8446277653
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-slate-900 py-8 text-center">
+        <p>&copy; 2024 AI Interview. All rights reserved.</p>
+    </footer>
+
+    <!-- Modals -->
+    <div id="login-modal" class="modal-overlay hidden">
+        <div class="modal-panel">
+            <button class="modal-close-btn"><i class="fas fa-times"></i></button>
+            <h2 class="text-2xl font-bold text-center mb-6">Welcome Back</h2>
+            <form id="login-form" method="POST" action="{{ url_for('auth_bp.login') }}">
+                <div id="login-error-message" class="error-message hidden"></div>
+                <div class="mb-4">
+                    <label for="email" class="block text-slate-400 mb-2">Email</label>
+                    <input name="email" type="email" class="modal-input" required>
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-slate-400 mb-2">Password</label>
+                    <input name="password" type="password" class="modal-input" required>
+                </div>
+                <button type="submit" class="w-full cta-button">Login</button>
+            </form>
+            <p class="text-center mt-4 text-slate-400">
+                New here? <button data-modal-target="register-modal" class="text-blue-500 hover:underline switch-modal">Create an account</button>
+            </p>
+        </div>
+    </div>
+
+    <div id="register-modal" class="modal-overlay hidden">
+        <div class="modal-panel">
+            <button class="modal-close-btn"><i class="fas fa-times"></i></button>
+            <h2 class="text-2xl font-bold text-center mb-6">Create Your Account</h2>
+            <form id="register-form">
+                <div id="register-error-message" class="error-message hidden"></div>
+                <div class="mb-4">
+                    <label for="name" class="block text-slate-400 mb-2">Your Name</label>
+                    <input name="name" type="text" class="modal-input" required>
+                </div>
+                <div class="mb-4">
+                    <label for="company_name" class="block text-slate-400 mb-2">Company Name</label>
+                    <input name="company_name" type="text" class="modal-input" required>
+                </div>
+                <div class="mb-4">
+                    <label for="email" class="block text-slate-400 mb-2">Email</label>
+                    <input name="email" type="email" class="modal-input" required>
+                </div>
+                <div class="mb-6">
+                    <label for="password" class="block text-slate-400 mb-2">Password</label>
+                    <input name="password" type="password" class="modal-input" required>
+                </div>
+                <button type="submit" class="cta-button w-full">Create Account</button>
+            </form>
+            <p class="text-center mt-4 text-slate-400">
+                Already have an account? <button data-modal-target="login-modal" data-modal-close="register-modal" class="font-bold text-primary-blue hover:underline">Log in</button>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Header scroll effect
+            const header = document.querySelector('header');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 10) {
+                    header.classList.add('scrolled');
+                } else {
+                    header.classList.remove('scrolled');
+                }
+            });
+
+            // Initialize Intersection Observer for animations
+            const animatedSections = document.querySelectorAll('.animated-section');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, {
+                threshold: 0.1
+            });
+
+            animatedSections.forEach(section => {
+                observer.observe(section);
+            });
+
+            // Modal handling
+            const openModalButtons = document.querySelectorAll('[data-modal-target]');
+            const closeModalButtons = document.querySelectorAll('.modal-close-btn');
+            const switchModalButtons = document.querySelectorAll('.switch-modal');
+            const overlay = document.querySelector('.modal-overlay');
+
+            const openModal = (modal) => {
+                if (modal == null) return;
+                modal.classList.remove('hidden');
+            }
+
+            const closeModal = (modal) => {
+                if (modal == null) return;
+                modal.classList.add('hidden');
+            }
+
+            openModalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const modal = document.getElementById(button.dataset.modalTarget);
+                    openModal(modal);
+                });
+            });
+
+            closeModalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const modal = button.closest('.modal-overlay');
+                    closeModal(modal);
+                });
+            });
+
+            switchModalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const currentModal = button.closest('.modal-overlay');
+                    const targetModal = document.getElementById(button.dataset.modalTarget);
+                    closeModal(currentModal);
+                    openModal(targetModal);
+                });
+            });
+            
+            // Open modal from URL parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const action = urlParams.get('action');
+            if (action === 'login') {
+                openModal(document.getElementById('login-modal'));
+            } else if (action === 'register') {
+                openModal(document.getElementById('register-modal'));
+            }
+
+            // Form submission logic
+            const handleFormSubmit = async (form, errorMessageEl) => {
+                errorMessageEl.classList.add('hidden');
+                const formData = new FormData(form);
+                const data = Object.fromEntries(formData.entries());
+
+                try {
+                    // Determine the correct action URL from the form's ID
+                    const actionUrl = form.id === 'login-form' 
+                        ? "{{ url_for('auth_bp.login') }}" 
+                        : "{{ url_for('auth_bp.register') }}";
+
+                    const response = await fetch(actionUrl, {
+                        method: 'POST', // Explicitly set method to POST
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.message || 'An unknown error occurred.');
+                    }
+                    
+                    if (result.redirect_url) {
+                        window.location.href = result.redirect_url;
+                    } else {
+                        // Handle register success (show login modal with a success message)
+                        closeModal(document.getElementById('register-modal'));
+                        openModal(document.getElementById('login-modal'));
+                        const loginErrorEl = document.getElementById('login-error-message');
+                        loginErrorEl.textContent = "Registration successful! Please log in.";
+                        loginErrorEl.classList.remove('error-message');
+                        loginErrorEl.classList.add('success-message'); // You might need to style this class
+                        loginErrorEl.classList.remove('hidden');
+                    }
+
+                } catch (error) {
+                    errorMessageEl.textContent = error.message;
+                    errorMessageEl.classList.remove('hidden');
+                }
+            };
+
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+
+            loginForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(loginForm, document.getElementById('login-error-message'));
+            });
+
+            registerForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handleFormSubmit(registerForm, document.getElementById('register-error-message'));
+            });
+        });
+    </script>
+</body>
+</html> 
