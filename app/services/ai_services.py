@@ -5,6 +5,8 @@ from flask import current_app
 import json
 import traceback
 from app.services.db_services import get_db_connection, parse_resume_from_file
+import PyPDF2
+import io
 
 # --- Prompts ---
 INTERVIEW_SYSTEM_PROMPT = """
@@ -36,7 +38,7 @@ Core Instructions:
     7. Evasion Protocol: If a candidate avoids a question, gives a nonsensical answer, or is not taking the interview seriously, you must first attempt to re-engage them professionally one time. If they continue to evade, issue a polite warning and move on to the next question. Do not get stuck. Example: "I understand. To ensure we cover all the required topics in our limited time, let's move to the next question."
     8. Handling Candidate Queries: If the candidate asks for clarification, provide a concise explanation and then re-engage them with the question.
     9. Conclusion: Once you have asked the specified number of questions, conclude the interview professionally. Thank the candidate for their time and explain the next steps.
-    10 .Termination Signal: After your final closing statement, and only then, output the special token [INTERVIEW_COMPLETE] on a new line.
+    10. Termination Signal: After your final closing statement, and only then, output the special token [INTERVIEW_COMPLETE] on a new line.
 """
 
 ANALYSIS_SYSTEM_PROMPT = """
@@ -92,7 +94,7 @@ def get_llm(temperature=0.7, json_mode=False):
         llm = ChatOpenAI(
             temperature=temperature,
             openai_api_key=api_key,
-            model_name="gpt-4o",  # Use the latest model
+            model_name="gpt-4o",
             model_kwargs=model_kwargs
         )
         return llm
@@ -206,3 +208,35 @@ def process_interview_results(interview_id):
         if conn.is_connected(): conn.rollback()
     finally:
         if conn.is_connected(): cursor.close(); conn.close()
+
+
+def is_valid_resume(file_stream):
+    """
+    Validates the uploaded file to check if it's a plausible resume.
+    - Checks for PDF format.
+    - Checks for keywords typically found in resumes.
+    - Returns a tuple (is_valid, message).
+    """
+    try:
+        # Check for keywords
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_stream.read()))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+
+        resume_keywords = ['experience', 'education', 'skills', 'summary', 'objective', 'work', 'project', 'contact',
+                           'email', 'phone']
+
+        # Simple check: at least 3 keywords must be present
+        found_keywords = sum(1 for keyword in resume_keywords if keyword in text.lower())
+
+        if found_keywords < 3:
+            return False, "The uploaded PDF does not appear to be a valid resume. Please upload a standard resume document."
+
+        return True, "Resume is valid."
+
+    except PyPDF2.errors.PdfReadError:
+        return False, "The uploaded file is not a valid PDF or is corrupted."
+    except Exception as e:
+        current_app.logger.error(f"Error during resume validation: {e}")
+        return False, "An error occurred while validating the resume file."

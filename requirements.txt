@@ -10,3 +10,4 @@ langchain-openai
 langchain
 openai
 google-cloud-secret-manager
+PyPDF2

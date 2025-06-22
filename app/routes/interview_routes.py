@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request, Response
-from app.services.db_services import get_db_connection, generate_id, parse_resume_from_file, serialize_datetime_in_obj
-from app.services.ai_services import get_llm, build_interview_messages, process_interview_results, get_openai_client
+from app.services.db_services import get_db_connection, parse_resume_from_file, serialize_datetime_in_obj
+from app.services.ai_services import get_llm, build_interview_messages, process_interview_results, get_openai_client, \
+    is_valid_resume
 import datetime
 import os
 import json
@@ -8,6 +9,8 @@ import base64
 import traceback
 from flask import current_app
 import uuid
+import re
+import io
 
 interview_bp = Blueprint('interview_bp', __name__)
 
@@ -18,14 +21,15 @@ def get_interview_by_link(invitation_link_guid):
     if not conn: return jsonify({"message": "Database connection failed"}), 500
     try:
         cursor = conn.cursor(dictionary=True)
-        # Fetch more fields to handle the resume logic
         query = """
             SELECT 
                 i.id as interview_id, i.status as interview_status, 
                 i.transcript_json, i.buffered_question_json,
-                j.title as job_title, j.company_id, j.number_of_questions 
+                j.title as job_title, j.company_id, j.number_of_questions,
+                co.name as company_name
             FROM interviews i 
             JOIN jobs j ON i.job_id = j.id 
+            JOIN companies co ON j.company_id = co.id
             WHERE i.invitation_link = %s
         """
         cursor.execute(query, (invitation_link_guid,))
@@ -34,25 +38,18 @@ def get_interview_by_link(invitation_link_guid):
         if not data:
             return jsonify({"message": "Invalid invitation link"}), 404
 
-        # In a real multi-tenant app, you'd fetch the company name from a companies table
-        data['company_name'] = "Innovatech"  # Placeholder
-
-        # Check the status of the interview
         status = data['interview_status']
 
         if status in ['Completed', 'Pending Review', 'Reviewed', 'Analysis Failed']:
             return jsonify({"message": "This interview has already been completed."}), 403
 
         if status == 'In Progress':
-            # This is a resume attempt
             data['resume'] = True
-            # Parse the JSON fields before sending
             if data.get('transcript_json') and isinstance(data['transcript_json'], str):
                 data['transcript_json'] = json.loads(data['transcript_json'])
             if data.get('buffered_question_json') and isinstance(data['buffered_question_json'], str):
                 data['buffered_question_json'] = json.loads(data['buffered_question_json'])
         else:
-            # This is a first-time start
             data['resume'] = False
 
         return jsonify(serialize_datetime_in_obj(data)), 200
@@ -68,29 +65,51 @@ def get_interview_by_link(invitation_link_guid):
 def submit_candidate_details_and_resume(interview_id):
     conn = get_db_connection()
     if not conn: return jsonify({"message": "Database connection failed"}), 500
+
     try:
-        cursor = conn.cursor(dictionary=True)
-        if 'resumeFile' not in request.files: return jsonify({"message": "Resume file missing."}), 400
+        if 'resumeFile' not in request.files:
+            return jsonify({"message": "Resume file is required."}), 400
+
         resume_file = request.files['resumeFile']
-        secure_name = str(uuid.uuid4()) + os.path.splitext(resume_file.filename)[1]
+
+        if resume_file.filename == '':
+            return jsonify({"message": "No resume file selected."}), 400
+
+        if not resume_file.filename.lower().endswith('.pdf'):
+            return jsonify({"message": "Invalid file type. Only PDF resumes are accepted."}), 400
+
+        email = request.form.get('candidateEmail')
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            return jsonify({"message": "Invalid email address format."}), 400
+
+        is_valid, validation_message = is_valid_resume(resume_file)
+        if not is_valid:
+            return jsonify({"message": validation_message}), 400
+
+        resume_file.seek(0)
+
+        cursor = conn.cursor(dictionary=True)
+        secure_name = str(uuid.uuid4()) + '.pdf'
         resume_save_path = os.path.join(current_app.config['RESUME_FOLDER'], secure_name)
         resume_file.save(resume_save_path)
-        resume_filepath_db = f"/uploads/resumes/{secure_name}"
+        resume_filepath_db = f"resumes/{secure_name}"
 
-        candidate_id = generate_id("cand_")
         now_utc = datetime.datetime.utcnow()
 
         cursor.execute(
-            "INSERT INTO candidates (id, name, email, resume_filename, created_at) VALUES (%s, %s, %s, %s, %s)",
-            (candidate_id, request.form['candidateName'], request.form['candidateEmail'], resume_filepath_db, now_utc))
+            "INSERT INTO candidates (name, email, resume_filename, created_at) VALUES (%s, %s, %s, %s)",
+            (request.form['candidateName'], email, resume_filepath_db, now_utc))
+
+        candidate_id = cursor.lastrowid
+
         cursor.execute("UPDATE interviews SET candidate_id=%s, status='Resume Submitted', updated_at=%s WHERE id=%s",
                        (candidate_id, now_utc, interview_id))
         conn.commit()
         return jsonify({"message": "Details submitted.", "candidateId": candidate_id}), 200
     except Exception as e:
         current_app.logger.error(f"Error in submit-details: {e}\n{traceback.format_exc()}")
-        if conn.is_connected(): conn.rollback()
-        return jsonify({"message": "An error occurred."}), 500
+        if conn and conn.is_connected(): conn.rollback()
+        return jsonify({"message": "An error occurred during detail submission."}), 500
     finally:
         if conn and conn.is_connected(): conn.close()
 
@@ -131,7 +150,12 @@ def start_ai_interview(interview_id):
             first_question = ai_response_fallback.content.strip().replace("[INTERVIEW_COMPLETE]", "")
             buffered_question = "Can you tell me about a challenging project you've worked on?"
 
-        transcript = [{"actor": "ai", "text": first_question, "timestamp": datetime.datetime.utcnow().isoformat()}]
+        # Add the first AI question to the transcript immediately.
+        transcript = [{
+            "actor": "ai",
+            "text": first_question,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }]
 
         update_query = "UPDATE interviews SET status='In Progress', transcript_json=%s, buffered_question_json=%s, updated_at=%s WHERE id=%s"
         cursor.execute(update_query,
@@ -165,42 +189,52 @@ def process_candidate_response(interview_id):
         interview = cursor.fetchone()
 
         transcript = json.loads(interview['transcript_json']) if isinstance(interview['transcript_json'], str) else \
-        interview['transcript_json'] or []
-        transcript.append(
-            {"actor": "candidate", "text": data['response_text'], "timestamp": datetime.datetime.utcnow().isoformat()})
+            interview['transcript_json'] or []
 
-        buffered_question_data = json.loads(interview['buffered_question_json']) if interview[
-            'buffered_question_json'] else {}
-        next_question_to_ask = buffered_question_data.get("question", "Could you elaborate on that?")
+        # 1. Add candidate's response to transcript.
+        transcript.append({
+            "actor": "candidate",
+            "text": data['response_text'],
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
 
-        transcript.append(
-            {"actor": "ai", "text": next_question_to_ask, "timestamp": datetime.datetime.utcnow().isoformat()})
+        # 2. Get the question for THIS turn from the buffer.
+        buffered_question_data = json.loads(interview['buffered_question_json']) if interview.get(
+            'buffered_question_json') else {}
+        question_to_ask_now = buffered_question_data.get("question", "Could you elaborate on that?")
 
-        cursor.execute("UPDATE interviews SET transcript_json=%s, buffered_question_json=NULL WHERE id=%s",
-                       (json.dumps(transcript), interview_id))
-        conn.commit()
+        # 3. Add the question for THIS turn to the transcript.
+        transcript.append({
+            "actor": "ai",
+            "text": question_to_ask_now,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
 
+        # 4. Now, with the complete history, generate the question for the NEXT turn.
         resume_summary = parse_resume_from_file(interview.get('resume_filename'))
-        messages = build_interview_messages(interview, resume_summary, interview['candidate_name'], transcript)
-        ai_response = llm.invoke(messages)
-        response_text = ai_response.content.strip()
+        messages_for_next_q = build_interview_messages(interview, resume_summary, interview['candidate_name'],
+                                                       transcript)
+        ai_response = llm.invoke(messages_for_next_q)
+        new_buffered_question_text = ai_response.content.strip()
 
-        if "[INTERVIEW_COMPLETE]" in response_text:
-            final_statement = response_text.replace("[INTERVIEW_COMPLETE]", "").strip()
-            transcript.append(
-                {"actor": "ai", "text": final_statement, "timestamp": datetime.datetime.utcnow().isoformat()})
-            cursor.execute("UPDATE interviews SET transcript_json=%s, status=%s WHERE id=%s",
-                           (json.dumps(transcript), 'Completed', interview_id))
+        # 5. Check if the AI has signaled the end of the interview.
+        if "[INTERVIEW_COMPLETE]" in new_buffered_question_text:
+            final_statement = new_buffered_question_text.replace("[INTERVIEW_COMPLETE]", "").strip()
+            transcript[-1]['text'] = final_statement  # The question we just added becomes the final statement.
+            cursor.execute(
+                "UPDATE interviews SET transcript_json=%s, status=%s, buffered_question_json=NULL WHERE id=%s",
+                (json.dumps(transcript), 'Completed', interview_id))
             conn.commit()
             process_interview_results(interview_id)
-            return jsonify({"question": {"text": next_question_to_ask}, "interview_status": "Completed"}), 200
+            return jsonify({"question": {"text": final_statement}, "interview_status": "Completed"}), 200
         else:
-            new_buffered_question = response_text
-            cursor.execute("UPDATE interviews SET buffered_question_json=%s WHERE id=%s",
-                           (json.dumps({"question": new_buffered_question}), interview_id))
+            # 6. Update DB with full transcript and the NEW buffered question for the next turn.
+            cursor.execute("UPDATE interviews SET transcript_json=%s, buffered_question_json=%s WHERE id=%s",
+                           (json.dumps(transcript), json.dumps({"question": new_buffered_question_text}), interview_id))
             conn.commit()
+            # 7. Send the question for the CURRENT turn to the frontend.
+            return jsonify({"question": {"text": question_to_ask_now}, "interview_status": "In Progress"}), 200
 
-        return jsonify({"question": {"text": next_question_to_ask}, "interview_status": "In Progress"}), 200
     finally:
         if conn and conn.is_connected(): conn.close()
 
@@ -250,7 +284,7 @@ def save_screenshot(interview_id):
         with open(filepath, 'wb') as f:
             f.write(image_bytes)
 
-        db_path = f"/uploads/screenshots/{filename}"
+        db_path = f"screenshots/{filename}"
 
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT screenshot_paths_json FROM interviews WHERE id = %s", (interview_id,))

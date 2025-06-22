@@ -1,9 +1,8 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from flask_login import login_required, current_user
-from app.services.db_services import get_db_connection, serialize_datetime_in_obj, generate_id
-from flask import current_app
-from app import mail
+from app.services.db_services import get_db_connection, serialize_datetime_in_obj
 from flask_mail import Message
+from app import mail
 import datetime
 import traceback
 import json
@@ -31,19 +30,19 @@ def manage_jobs():
             if not data or not all(k in data for k in ['title', 'department', 'description']):
                 return jsonify({"message": "Missing required fields"}), 400
 
-            new_job_id = generate_id("job_")
             query = """
-                INSERT INTO jobs (id, title, department, description, status, created_at, created_by, company_id, number_of_questions, must_ask_topics) 
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                INSERT INTO jobs (title, department, description, status, created_at, created_by, company_id, number_of_questions, must_ask_topics) 
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """
             cursor.execute(query, (
-                new_job_id, data['title'], data['department'], data['description'],
+                data['title'], data['department'], data['description'],
                 data.get('status', 'Open'), datetime.datetime.utcnow(),
                 current_user.id, company_id,
                 data.get('number_of_questions', 5), data.get('must_ask_topics')
             ))
             conn.commit()
 
+            new_job_id = cursor.lastrowid
             cursor.execute("SELECT * FROM jobs WHERE id = %s", (new_job_id,))
             return jsonify(serialize_datetime_in_obj(cursor.fetchone())), 201
 
@@ -127,33 +126,51 @@ def send_invites(job_id):
     if not conn: return jsonify({"message": "Database connection failed"}), 500
 
     company_id = current_user.company_id
+    admin_name = current_user.name
+    admin_email = current_user.email
 
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT title FROM jobs WHERE id = %s AND company_id = %s", (job_id, company_id))
+        cursor.execute(
+            "SELECT j.title, c.name as company_name FROM jobs j JOIN companies c ON j.company_id = c.id WHERE j.id = %s AND j.company_id = %s",
+            (job_id, company_id))
         job_info = cursor.fetchone()
         if not job_info:
             return jsonify({"message": "Job not found or access denied"}), 404
+
+        company_name = job_info['company_name']
 
         sent_count = 0
         failed_emails = []
         for email in emails:
             try:
-                interview_id = generate_id("int_")
                 invitation_link_guid = str(uuid.uuid4())
 
                 cursor.execute(
-                    "INSERT INTO interviews (id, job_id, company_id, invitation_link, status) VALUES (%s, %s, %s, %s, %s)",
-                    (interview_id, job_id, company_id, invitation_link_guid, 'Invited')
+                    "INSERT INTO interviews (job_id, company_id, invitation_link, status) VALUES (%s, %s, %s, %s)",
+                    (job_id, company_id, invitation_link_guid, 'Invited')
                 )
 
                 interview_link = f"https://interview.aiagentictool.tech/candidate_interview.html?invite={invitation_link_guid}"
                 msg = Message(
-                    subject=f"Invitation to Interview for {job_info['title']}",
-                    sender=current_app.config['MAIL_USERNAME'],
-                    recipients=[email]
+                    subject=f"Invitation to Interview for {job_info['title']} at {company_name}",
+                    sender=("AI Interview Portal", current_app.config['MAIL_USERNAME']),
+                    recipients=[email],
+                    reply_to=admin_email
                 )
-                msg.body = f"Hello,\n\nYou have been invited to an AI-powered screening interview for the {job_info['title']} position.\n\nPlease use the following link to begin your interview:\n{interview_link}\n\nBest regards,\nThe Hiring Team"
+                msg.body = f"""Hello,
+
+You have been invited to an AI-powered screening interview for the {job_info['title']} position with {company_name}.
+
+If you have any questions, please reply directly to this email.
+
+Please use the following link to begin your interview at your convenience:
+{interview_link}
+
+Best regards,
+{admin_name}
+(on behalf of the {company_name} Hiring Team)
+"""
                 mail.send(msg)
                 sent_count += 1
             except Exception as e:
@@ -187,14 +204,14 @@ def get_admin_interviews():
     company_id = current_user.company_id
     job_id_filter = request.args.get('job_id')
     status_filter = request.args.get('status')
-    limit = request.args.get('limit', type=int)
-    offset = request.args.get('offset', type=int)
-    sort_by = request.args.get('sort_by', 'score')
+    limit = request.args.get('limit', type=int, default=50)
+    offset = request.args.get('offset', type=int, default=0)
+    sort_by = request.args.get('sort_by', 'interview_date')
     sort_order = request.args.get('sort_order', 'desc')
     search_query = request.args.get('search', '')
 
     allowed_sort_columns = ['score', 'interview_date', 'status']
-    if sort_by not in allowed_sort_columns: sort_by = 'score'
+    if sort_by not in allowed_sort_columns: sort_by = 'interview_date'
     if sort_order.lower() not in ['asc', 'desc']: sort_order = 'desc'
 
     try:
@@ -215,40 +232,25 @@ def get_admin_interviews():
 
         where_clause = " WHERE " + " AND ".join(conditions)
 
-        is_paginated_request = limit is not None and offset is not None
-
-        total_records = 0
-        if is_paginated_request:
-            count_query = f"SELECT COUNT(i.id) as total {base_query}{where_clause}"
-            cursor.execute(count_query, tuple(params))
-            total_records = cursor.fetchone()['total']
+        count_query = f"SELECT COUNT(i.id) as total {base_query}{where_clause}"
+        cursor.execute(count_query, tuple(params))
+        total_records = cursor.fetchone()['total']
 
         data_query_builder = [
-            f"SELECT i.*, j.title as job_title, c.name as candidate_name, c.email as candidate_email {base_query}{where_clause}",
-            f"ORDER BY {sort_by} {sort_order}"
+            f"SELECT i.id, i.status, i.score, i.updated_at as interview_date, i.ai_summary, j.title as job_title, c.name as candidate_name, c.email as candidate_email {base_query}{where_clause}",
+            f"ORDER BY {sort_by} {sort_order}",
+            "LIMIT %s OFFSET %s"
         ]
 
         final_params = list(params)
-        if is_paginated_request:
-            data_query_builder.append("LIMIT %s OFFSET %s")
-            final_params.extend([limit, offset])
+        final_params.extend([limit, offset])
 
         data_query = " ".join(data_query_builder)
         cursor.execute(data_query, tuple(final_params))
         interviews = cursor.fetchall()
 
-        for interview in interviews:
-            for key in ['transcript_json', 'ai_questions_json', 'screenshot_paths_json', 'detailed_scorecard_json']:
-                if interview.get(key) and isinstance(interview[key], str):
-                    try:
-                        interview[key] = json.loads(interview[key])
-                    except json.JSONDecodeError:
-                        interview[key] = None
+        return jsonify({"total": total_records, "interviews": serialize_datetime_in_obj(interviews)}), 200
 
-        if is_paginated_request:
-            return jsonify({"total": total_records, "interviews": serialize_datetime_in_obj(interviews)}), 200
-        else:
-            return jsonify(serialize_datetime_in_obj(interviews)), 200
     except Exception as err:
         current_app.logger.error(f"DB error in get_admin_interviews: {err}\n{traceback.format_exc()}")
         return jsonify({"message": "An unexpected error occurred"}), 500
@@ -273,7 +275,6 @@ def get_admin_interview_detail(interview_id):
         interview = cursor.fetchone()
         if not interview: return jsonify({"message": "Interview not found or access denied"}), 404
 
-        # This is the corrected section to parse and alias all JSON fields
         for key in ['transcript_json', 'ai_questions_json', 'screenshot_paths_json', 'detailed_scorecard_json']:
             if interview.get(key) and isinstance(interview[key], str):
                 try:
@@ -281,7 +282,6 @@ def get_admin_interview_detail(interview_id):
                 except json.JSONDecodeError:
                     interview[key] = None
 
-        # Aliasing for easier frontend access
         interview['transcript'] = interview.get('transcript_json')
         interview['questions'] = interview.get('ai_questions_json')
         interview['screenshots'] = interview.get('screenshot_paths_json') or []
@@ -341,33 +341,109 @@ def score_interview(interview_id):
             conn.close()
 
 
-@admin_bp.route('/dashboard-summary', methods=['GET'])
+@admin_bp.route('/dashboard-stats', methods=['GET'])
 @login_required
-def get_dashboard_summary():
-    conn = get_db_connection()
-    if not conn: return jsonify({"message": "Database connection failed"}), 500
-
+def get_dashboard_stats():
+    conn = None
     company_id = current_user.company_id
 
     try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"message": "Database connection failed"}), 500
+
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT COUNT(*) as count FROM jobs WHERE status = 'Open' AND company_id = %s", (company_id,))
-        open_jobs = cursor.fetchone()['count']
-        cursor.execute("SELECT COUNT(*) as total_apps FROM interviews WHERE company_id = %s", (company_id,))
-        total_applications = cursor.fetchone()['total_apps']
-        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Scheduled' AND company_id = %s",
+
+        # 1. Key Metrics
+        cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE company_id = %s", (company_id,))
+        total_interviews = cursor.fetchone()['count']
+
+        cursor.execute("SELECT AVG(score) as avg_score FROM interviews WHERE score IS NOT NULL AND company_id = %s",
                        (company_id,))
-        interviews_scheduled = cursor.fetchone()['count']
+        average_score = cursor.fetchone()['avg_score'] or 0
+
+        cursor.execute("SELECT COUNT(*) as count FROM jobs WHERE status = 'Open' AND company_id = %s", (company_id,))
+        open_positions = cursor.fetchone()['count']
+
         cursor.execute("SELECT COUNT(*) as count FROM interviews WHERE status = 'Pending Review' AND company_id = %s",
                        (company_id,))
-        pending_reviews = cursor.fetchone()['count']
+        pending_review = cursor.fetchone()['count']
 
-        return jsonify({"open_positions": open_jobs, "total_applications": total_applications,
-                        "interviews_scheduled": interviews_scheduled, "pending_reviews": pending_reviews}), 200
-    except Exception as err:
-        current_app.logger.error(f"DB error in get_dashboard_summary: {err}\n{traceback.format_exc()}")
-        return jsonify({"message": "An unexpected error occurred"}), 500
+        # 2. Charts Data
+        cursor.execute("""
+            SELECT j.title, COUNT(i.id) as interview_count
+            FROM jobs j
+            LEFT JOIN interviews i ON j.id = i.job_id
+            WHERE j.company_id = %s
+            GROUP BY j.id
+            ORDER BY interview_count DESC
+            LIMIT 7
+        """, (company_id,))
+        interviews_per_job = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT DATE(created_at) as date, COUNT(*) as count
+            FROM interviews
+            WHERE created_at >= CURDATE() - INTERVAL 30 DAY AND company_id = %s
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        """, (company_id,))
+        interviews_over_time = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM interviews
+            WHERE company_id = %s
+            GROUP BY status
+        """, (company_id,))
+        status_breakdown = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT i.id, c.name as candidate_name, j.title as job_title, i.updated_at
+            FROM interviews i
+            JOIN candidates c ON i.candidate_id = c.id
+            JOIN jobs j ON i.job_id = j.id
+            WHERE i.status IN ('Completed', 'Pending Review', 'Reviewed') AND i.company_id = %s
+            ORDER BY i.updated_at DESC
+            LIMIT 5
+        """, (company_id,))
+        recent_activity = cursor.fetchall()
+
+        stats = {
+            "key_metrics": {
+                "total_interviews": total_interviews,
+                "average_score": round(average_score, 1),
+                "open_positions": open_positions,
+                "pending_review": pending_review
+            },
+            "charts": {
+                "interviews_per_job": {
+                    "labels": [row['title'] for row in interviews_per_job],
+                    "data": [row['interview_count'] for row in interviews_per_job]
+                },
+                "interviews_over_time": {
+                    "labels": [row['date'].strftime('%b %d') for row in interviews_over_time],
+                    "data": [row['count'] for row in interviews_over_time]
+                },
+                "status_breakdown": {
+                    "labels": [row['status'] for row in status_breakdown],
+                    "data": [row['count'] for row in status_breakdown]
+                }
+            },
+            "recent_activity": [
+                {
+                    "interview_id": row['id'],
+                    "text": f"Interview with {row['candidate_name']} for {row['job_title']} completed.",
+                    "timestamp": row['updated_at'].isoformat()
+                } for row in recent_activity
+            ]
+        }
+
+        return jsonify(stats), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching dashboard stats: {e}\n{traceback.format_exc()}")
+        return jsonify({"message": "An internal error occurred"}), 500
     finally:
         if conn and conn.is_connected():
-            cursor.close()
             conn.close()
