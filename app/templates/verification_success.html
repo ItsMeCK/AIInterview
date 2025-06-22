@@ -1,0 +1,37 @@
+<!-- templates/verification_success.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Successful</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="text-center p-8 bg-white rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold text-green-600">Account Verified!</h1>
+        <p class="text-gray-700 mt-2">Your email address has been successfully verified.</p>
+        <a href="/" class="mt-6 inline-block bg-indigo-600 text-white font-bold py-2 px-4 rounded hover:bg-indigo-700">
+            Click here to Login
+        </a>
+    </div>
+</body>
+</html>
+
+<!-- templates/verification_failed.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Verification Failed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center h-screen">
+    <div class="text-center p-8 bg-white rounded-lg shadow-lg">
+        <h1 class="text-2xl font-bold text-red-600">Verification Failed</h1>
+        <p class="text-gray-700 mt-2">{{ message }}</p>
+        <a href="/" class="mt-6 inline-block bg-indigo-600 text-white font-bold py-2 px-4 rounded hover:bg-indigo-700">
+            Return to Homepage
+        </a>
+    </div>
+</body>
+</html>

@@ -1,7 +1,6 @@
 -- Create the database if it doesn't exist
 CREATE DATABASE IF NOT EXISTS ai_interview_portal_db;
 USE ai_interview_portal_db;
-
 -- Table for companies that use the platform
 CREATE TABLE IF NOT EXISTS companies (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -73,3 +72,21 @@ CREATE TABLE IF NOT EXISTS interviews (
     FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+
+-- Run these queries on your existing database to add the new columns.
+
+-- Add a 'role' column to distinguish between regular admins and super admins.
+ALTER TABLE admins
+ADD COLUMN `role` VARCHAR(50) NOT NULL DEFAULT 'admin' AFTER `password_hash`;
+
+-- Add a column to store the interview limit for each admin.
+ALTER TABLE admins
+ADD COLUMN `interview_limit` INT NOT NULL DEFAULT 5 AFTER `role`;
+
+-- Add a column to track if an admin's email has been verified.
+ALTER TABLE admins
+ADD COLUMN `is_verified` BOOLEAN NOT NULL DEFAULT FALSE AFTER `interview_limit`;
+
+-- Add a column to store the unique token for email verification.
+ALTER TABLE admins
+ADD COLUMN `verification_token` VARCHAR(100) NULL UNIQUE AFTER `is_verified`;
